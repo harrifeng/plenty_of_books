@@ -1,6 +1,7 @@
 * Chapter 3 Process Management
 ** The Process
-   + 进程不仅仅包括正在执行的程序,还通常包括以下:
+   + 进程简言之就是正在执行的程序和它所占有的资源的总和, 它所占有的资源,
+     简单来说有如下:
      1) 打开的文件
      2) 挂起的信号
      3) 内核内部的数据
@@ -18,4 +19,33 @@
    + 在chlid中,fork返回后,一般都是执行新的程序, exec()系列函数负责这个部分
    + 当process结束的适合,会调用exit()函数. 所有调用了exit()的process都要进入
      一个叫做zombie的状态来等待他们的parent调用wait()系列函数来释放他们的资源
+** Process Descriptor and the Task Structure
+   + 每一个process的信息都写在process descriptor里面(descriptor是一个unix理念,
+     基本所有的对象都有一个descriptor), 在Linux里面process descriptor的类型不再
+     是一个简单的类型,而是一个struct: struct task_struct
+   + 在32位机器上面,这个task_struct有1.7K大小,因为他保存了一个process所占有的所有
+     的资源(1打开的文件,2挂起的信号...)
+** Allocating the Process Descriptor
+   + 为了达到对象重用和缓存着色(Cache Coloring)的目的, Linux使用slab allocator
+     来动态的分配task_struct.
+   + 每个进程都有一个自己的进程内核栈,原来task_struct是静态分配的,那么就存放在每个
+     内核栈的最后面(最不可能被用到的地方, 同时也方便找到).因为2.6以后, task_struct
+     是动态分配的,地址都是不定的.所以很自然的我们想到在原来内存栈最后面的地方存放一个
+     指针来指向task_struct.后来为了增加信息把这个指针扩充成了一个新的结构体
+     task_info(这个结构体第一个成员就是指向task_struct的指针)
+   + task_info代码如下:
+     #+begin_src c
+       struct thread_info {
+           struct task_struct      *task;
+           struct exec_domain      *exec_domain;
+           __u32                   flags;
+           __u32                   status;
+           __u32                   cpu;
+           int                     preempt_count;
+           mm_segment_             addr_limit;
+           struct restart_block    restart_block;
+           void                    *sysenter_return;
+           int                     uaccess_err;
+       }
+     #+end_src
   
