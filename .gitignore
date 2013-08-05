@@ -1,6 +1,7 @@
 # Object files
 *.o
 .\#*
+*.html
 
 # Libraries
 *.lib

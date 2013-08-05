@@ -1,3 +1,4 @@
+#+OPTIONS:^:{}
 * Chapter 3 Process Management
 ** The Process
    + 进程简言之就是正在执行的程序和它所占有的资源的总和, 它所占有的资源,
@@ -48,4 +49,31 @@
            int                     uaccess_err;
        }
      #+end_src
-  
+   + 整体示意图如下:
+     #+begin_example
+                     Process Kernel Stack
+              +------------------------------+ -- highest memory address
+              |       Start of Stack         |
+              |              |               |
+              |              |               |
+              |              |               |
+              |              |               |
+              |              |               |
+              |              |               |
+              |              |               |
+              |              |               |
+              +--------------+---------------+ -- stack pointer
+              |              |               |
+              |              V               |
+              |                              |
+              |                              |
+              |                              |
+              |                              |
+              +------------------------------+
+              |   struct thread_info {       |
+              |     struct task_struct *task;|
+              |     //.......                |
+              |   }                          |
+              |                              |
+              +------------------------------+ -- lowest memory address
+     #+end_example
