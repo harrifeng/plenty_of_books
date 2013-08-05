@@ -77,3 +77,13 @@
               |                              |
               +------------------------------+ -- lowest memory address
      #+end_example
+** Storing the Process Descriptor
+   + 每一个进程都是有一个ID来标示的,类型是pid_t为了和老的Unix系统兼容, pid_t通
+     常都是int,这也就意味着系统同时最大共存的进程数目是32768
+   + 如果希望能有更多的进程共存,那么可以修改/proc/sys/kernel/pid_max
+   + 内核中河task_struct直接沟通的情况非常多,那么直接能够得到当前的task_struct
+     就变的很必要.
+     - 在power pc等寄存器多的系统中,一般当前的task_struct地址就存在r2这个寄存器中.
+     - 在x86这种系统中,我们可以用刚才上面讲解的thread_info在进程内核栈最开始这个有
+       利的布局,通过当前内核栈开始位置减去内核栈大小就得到了thread_info的位置,然后
+       current_thread_info()->task就得到了task_struct的地址.
