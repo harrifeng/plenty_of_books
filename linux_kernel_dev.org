@@ -87,3 +87,44 @@
      - 在x86这种系统中,我们可以用刚才上面讲解的thread_info在进程内核栈最开始这个有
        利的布局,通过当前内核栈开始位置减去内核栈大小就得到了thread_info的位置,然后
        current_thread_info()->task就得到了task_struct的地址.
+** Process State
+   + dd
+   + 状态转换图如下:
+     #+begin_example
+                                                                                                                                                    
+           +----------------------+                                                                                   +----------------------+ 
+           |  Existing task calls |                                                                                   |                      | 
+           |  fork() to create    |                                                                                   |  Task is termminated | 
+           |  a new process       |                                                                                   |                      | 
+           |                      |                                                                                   |                      | 
+           |                      |                     Scheduler dispatches task to run:                             |                      | 
+           |                      |                     schedule() calls context_switch()                             |                      | 
+           |                      |            +------------------------------------------------------+               |                      | 
+           +-----------+----------+            |                                                      |               +----------------------+ 
+                       |                       |                                                      |                            ^           
+                       |            +----------+-----------+                             +------------V-----------+                |           
+                       |            |                      |                             |                        |                |           
+                       | Task forks |  TASK_RUNNING        |                             |  TASK_RUNNING          |  Task exits via|           
+                       |            |  (ready but not      |                             |  (running)             |    do_exit     |           
+                       +----------->|   running)           |                             |                        +----------------+           
+                                    |                      |                             |                        |                            
+                                    +----------------------+                             |                        |                            
+                                          ^     ^             Task is preempted          +------------+----+------+                            
+                                          |     |             by higher priority task                 |    |                                   
+                                          |     +-----------------------------------------------------+    |                                   
+                                          |                                                                |                                   
+                                          |                                                                |                                   
+                                          |                                                                |                                   
+                                          |                +----------------------------+                  |                                   
+                                          |                |                            |                                                      
+                                          |                |   TASK_INTERRUPTIBLE       |    Task sleeps on|                                   
+                                          |                |            or              |   wait queue for |                                   
+                                          |                |   TASK_UNINTERRUPTIBLE     |   a specific event                                   
+                                          |                |          (waiting)         |                  |                                   
+                                          +----------------+                            <------------------+                                   
+                                    Event occurs and task  |                            |                                                      
+                                    is woken up and placed |                            |                                                      
+                                    vack on the run queu   |                            |                                                      
+                                                           +----------------------------+                                                      
+     #+end_example
+     
