@@ -88,8 +88,24 @@
        利的布局,通过当前内核栈开始位置减去内核栈大小就得到了thread_info的位置,然后
        current_thread_info()->task就得到了task_struct的地址.
 ** Process State
-   + dd
-   + 状态转换图如下:
+   + task_struct里面有很多重要的变量,比如这个state,它表达了process可能处于的如下
+     几种状态:
+     - TASK_RUNNING : 正在运行或者在run-queue上等待运行
+     - TASK_INTERRUPTIBLE : 程序正在睡眠(也就是被阻塞了),等待某个condition出现
+       继而可以重新进入TASK_RUNNING状态.因为是INTERRUPTIBLE,所以proceess也可能
+       接受到某个信号而重新进入TASK_RUNNING
+     - TASK_UNINTERRUPTIBLE : 和上面的TASK_INTERRUPTIBLE一样,除了无法接受中断
+       而唤醒.(我们使用ps命令看到的在state里面显示为D的,就是这种状态的process, 因
+       为连信号都无法中断它,所以你发送SIGKILL也是无法杀掉这个进程的.即便有办法杀掉,
+       杀掉这样的进程也不合理,因为它可能正在一个很重要的操作中间,而且可能持有一个信
+       号量. 使用场景:
+       1) 在一个process必须等待而不能被中断的场景
+       2) 要等待的context应该会马上到来
+     - __TASK_TRACED : 进程正在被其他进程跟踪
+     - __TASK_STOPPED : 进程的执行已经被终止:
+       1) 要么是收到SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU
+       2) 要么是在debug的适合收到任何的信号
+   + 这些状态的转换图如下:
      #+begin_example
                                                                                                                                                     
            +----------------------+                                                                                   +----------------------+ 
@@ -127,4 +143,62 @@
                                     vack on the run queu   |                            |                                                      
                                                            +----------------------------+                                                      
      #+end_example
+** Manipulating the Current Process State
+   + 在Linux中要考虑多核的情况,所以不能直接task->state = state, 需要一个函数来完成
+     #+begin_src c
+       set_task_state(task, state);
+       set_current_state(state);
+     #+end_src
+** Process Context
+   + 所谓"进程上下文"是指的,当process开始运行的时候一般是在用户空间, 而用户空间的功能
+     是有限的,它会用到内核的功能,这个时候可以通过:
+     1) 系统调用
+     2) 触发异常
+   + 当我们通过上面的方式进入内核态的时候,内核其实是帮用户态的process在工作,我们就说
+     这种工作状态为"进程上下文"(内核代表进程执行)
+   + 在进程上下文中, current宏是有效的, 因为内核是知道在帮助哪个用户的process在工作,
+     后面讲到的中断上下文(interrupt context), current就没有用了,因为不是为某个
+     proces工作
+** The Process Family Tree
+   + 每个进程都有一个父进程, 而每个进程也会有0到多个子进程.在task_struct里面分别通过
+     变量parent 和 child来访问
+   + 所有的进程都有一个"跟进程"
+     那就是init, 在Linux里面叫init_task,PID==1.
+** Process Creation
+   + 在类Unix系统中, 进程的创建都很独特: 其他操作系统一般是在新的用户空间创建新
+     的进程. 而Unix把这个工作分成了两步:
+     1) fork : 创建一个子进程,只有一些参数和父进程不一样(parentID, PID不会继承
+	挂起的信号也不会继承)
+     2) exec() : 把新的可执行程序导入到地址空间开始执行
+** Copy-on-Write:
+   + 我们说Unix系统进程创建之所以独特,也就是独特在fork上面,因为传统的fork会吧所有
+     的父进程的资源复制一遍给子进程.因为子进程并不需要那么多的资源,而且很可能
+     子进程要重启新的炉灶(新的可执行程序),所有的资源都要放弃. 这个时候我们就
+     引入了"写时拷贝"
+   + 所谓"写时拷贝"就是fork的时候,资源是只读的,父子进程共享地址, 一旦这些资源被
+     写入了,那么说明一份新的数据会诞生.那么父子就不能在使用相同的地址了. 这个时候
+     就要再复制一份新的数据. 因为很多情况下, fork之后马上是exec(), 所以数据的复
+     制从头到尾都没有执行过.
+   + fork其实只需要给子进程复制一下page table, 和创建一些新的process descriptor
+     里面的变量而已,所以速度要快,这符合Unix快速创建进程的哲学
+** Forking
+   + Linux的fork==>clone(), clone()通过一些flag来判断父子进程共享哪些资源
+   + clone()内部==>do_fork()
+   + do_fork()==>copy_process(), 真正的工作在这里执行
+     1) 调用dup_task_struct(), 创建如下:
+	1. 一个新的内核栈,一般是8K或者4K, 地址是新的和老的不一样
+	2. 一个新的thread_info(在内核栈内部), task成员变量一会会指向下面的task_struct
+	3. 一个新的task_struct, 内容和父进程的一样(并将thread_info内部的指针地址更改)
+     2) 检查一下创建新进程后,当前用户的资源有没有超标
+     3) 因为刚才的数据都是复制的,父子的task_struct是一样的,但是为了区分父子,肯定有很多
+	属性要不一样:比如一些计数的属性要清零. 但大部分还是一样的.这里主要是属性,不是"写时
+	拷贝"的那些数据
+     4) 子进程被设置为TASK_UNINTERRUPTIBLE防止它运行
+     5) copy_process()==>copy_flag() 更新子进程的flags: 清零PF_SUPERPRIV(表明进程
+	是否拥有超级用户权限), 清零PF_FORKNOEXEC(表明还没有调用exec())
+     6) copy_process()==>alloc_pid()来赋予一个新的PID
+	
+   
+
+
      
