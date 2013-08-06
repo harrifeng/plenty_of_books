@@ -197,6 +197,163 @@
      5) copy_process()==>copy_flag() 更新子进程的flags: 清零PF_SUPERPRIV(表明进程
 	是否拥有超级用户权限), 清零PF_FORKNOEXEC(表明还没有调用exec())
      6) copy_process()==>alloc_pid()来赋予一个新的PID
+     7) 根据传入clone()的flag的不同, copy_process()会选择对以下的资源才去复制一份
+	给子进程,还是共享(一般来说如果是thread的话,那么这些信息是共享的,在Linux系统
+	中就是如果几个process共享这些信息,那么他们就是thread):
+	+ 打开的文件
+	+ 文件系统信息
+	+ 信号处理函数
+	+ 进程地址空间
+	+ namespce
+     8) copy_process()会释放资源然后返回给调用者一个指向新子进程的指针.
+   + copy_process()<==do_fork()完成任务返回了do_fork, 如果copy_process()调用成功
+     那么新的子进程会比父进程先唤醒, 这是基于这样一个事实: 如果父进程先唤醒,那么可能会
+     写入address space, 这样一来,就会调用写时拷贝来复制一份资源!如果子进程先调用,那么
+     这些内容本是可以避免的.因为子进程可能上来就放弃了这些资源,调用exec()开始新的生活!
+** vfork()
+   + vfork()是一种在copy-on-write技术诞生之前的应对"两步生成新process"的方案, 现在
+     已经不需要了.Linux在2.2之前vfork()甚至只是通过fork()实现的.
+   + vfork()主要是添加了很多限制:
+     1) 子进程和父进程公用地址空间(页表不创建新的)
+     2) 知道子进程退出或者执行exec(), 父进程都是被阻塞的.
+     3) 子进程不允许写入到地址空间里面.
+** The Linux Implementation of Threads
+   + 在Linux中, 线程只是碰巧共享一些资源(比如地址空间)的一群进程
+** Creating Threads
+   + 线程只是在创建的时候传给clone()不同的flage而已,比如我们要创建一个子线程(新
+     创建的子进程和原来的父进程共享资源,他们一块叫做线程):
+     #+begin_src c
+       /**************************************************************/
+       /* CLONE_VM -> Share address space                            */
+       /* CLONE_FS -> Share file system information                  */
+       /* CLONE_FILES -> Share open files                            */
+       /* CLONE_SIGHAND -> Share blocked signals and signal handlers */
+       /**************************************************************/
+       clone(CLONE_VM | CLONE_FS |CLONE_FILES |CLONE_SIGHAND, 0);
+     #+end_src
+** Kernel Threads
+   + 内核线程也是进程的一种,也有task_struct,也会被调度,也有那么多state, 它特别的
+     地方在于
+     - 它没有address space(task_struct的成员mm指针为NULL)
+     - 它不会被交换到用户态
+   + 内核线程只能由其他内核线程fork创建,在bash里面可以通过ps -ef来查看他们.
+** Process Termination
+   + process也要消亡,其方式也就是主动和被动两种:
+     - 主动调用exit(), 或者被其他语言比如C,在main的最后加上一个exit()
+     - 收到了一个信号,或者异常,自己无法处理,又不能忽略
+   + 所有的进程结束都是通过do_exit()来处理的
+     - 首先是标记flags为PF_EXISTING,表示正在退出
+     - 释放掉资源,内存,文件,信号量等等
+     - 设置exit code
+     - 通知父进程,state成为EXIT_ZOMBIE
+     - 调用schedule()执行其他程序, 因为当前程序不可调度了,所以这个函数永远都
+       不会返回.
+   + 到这个阶段,已经进入了EXIT_ZOMBIE状态,也不能run了, resource也都没有了.这个时候
+     一个进程所占有的资源就剩下传统三强了:
+     1) 内核栈
+     2) thread_info(其实也是在内核栈里面)
+     3) task_struct 结构体
+** Removing the Process Descriptor
+   + 在do_exit()完成后,很多信息都已经删除了,但是还是保留了task_struct,就是因为希望在
+     进程退出后,依然能够得到关于它的消息, 当父进程得知子进程退出后,会调用wait()
+     来释放最后的这些资源
+   + wait()函数的标准动作是挂起,以等待其中一个子进程返回, 同时会返回结束进程的PID, 从
+     参数中返回的指针还能知道子进程的exit code
+   + 当真要释放process descriptor的时候, release_task()会被调用:
+     1) release_task()==>__exit_signal()==>__unhash_process()==>detach_pid(),
+	把进程从pidhash已经task list中删除
+     2) __exit_signal()会释放已经退出的进程的所有资源
+     3) 如果这个是thread group的最后一员,而且leader已经zombie了,那么就通知zombie leader
+	的父进程
+     4) release_task()==>put_task_struct()会把传统三强铁山角(内核栈, thread_info,以及
+	task_struct)释放掉
+** The Dilemma of the Parentless Task
+   + 如果父进程在子进程之前就退出了,那么我们可以:
+     1) 从当前的thread groupd里面找一个进程做自己的父进程
+     2) 让PID=1的init来做自己的父进程
+* Chapter 4 Process Scheduling
+** Multistasking
+   + 多任务操作系统能在单核计算机上展现出所有进程共同运行的假象, 在多核计算机上,
+     让多个进程真正并行的进行运算
+   + 多任务操作系统分成两类:
+     - 飞抢占式多任务(cooperative multitasking):调度器能决定哪个进程结束,哪个
+       进程开始.
+     - 抢占式多任务(preemptive multitasking):进程一旦开始运行,就只有它自己主动
+       让出cpu, 其他进程无法抢占
+   + 绝大部分操作系统都是抢占式的,Linux也是
+** Linux's Process Scheduler
+   + 早期linux的调度设计方法简单
+   + 2.5开始设计出O(1)调度算法,能够很好的应多多核
+   + 后来发现O(1)调度算法对于人机交互的进程很不友好,最终引入了CFS(Completely 
+     Fair Scheduler)
+** I/O-Bound Versus Processor-Bound Processes
+   + 所谓I/O-Bound的进程就是真正运行的不多,总是在等IO的进程.这种进程调度的时候
+     就要多给他机会,但是每次时间都不要太长
+   + 所谓Perocessor-Bound的进程,就是每次调度都是在不停的运行, 这种进程调度的时
+     候要每次多给时间, 但不要多给机会.
+** Process Priority
+   + 最常见的调度算法就是"基于优先级的调度", 就是把所有的进程都根据其价值需求,进行
+     分机.优先级高的运行的早,运行时间多
+   + 这种最朴素的理念在Linux中也有体现, Linux有两中优先级值:
+     - nice value : 默认值是0, 区间是[-20, 19], 值越大就是对其他人越nice, 也就
+       优先级越低. 不同Unix系统对于nice的利用不同. Mac OSX 根据nice值来确定运行
+       时间. Linux根据nice值来确定处理器使用的比例.
+     - 实时优先级 :区间是[0-99], 这个是值越大优先级越高. 跟nice是两个不同的系统.
+       任何实时进程优先级都大于普通进程
+** Timeslice
+   + 我们前面说过传统的操作系统会给每个进程一个timesilce, 而timeslice越长,交互
+     程序的体验就越差,所以现在操作系统中的时间片都非常的小--比如10微秒
+   + Linux不是分配时间片的,而是分配cpu使用比例,分配的原则:nice 值为主,大家都要兼顾
+     也就是说一个进程能获得多少cpu使用比例,要
+     1) 看自己的nice值是不是够高
+     2) 还要看系统中其他的进程跟自己比起来值大还是小
+     3) 系统中进程多不多.僧多粥就少
+   + 大部分操作系统下,当某个进程进入可执行状态的时候,看它是不是取代当前的进程运行.主要
+     是看它的优先级,以及时间片是否足够
+   + Linux没有时间片的概念.进程是否运行是看它使用的CPU的比例,如果新加入可运行的进程
+     CPU使用比例比当前的进程低,那么马上就能运行.
+** The Scheduling Policy in Action
+   + 举个例子.一个文字编辑器和一个视频解码器,前者是IO bound, 后者是CPU bound, 假设
+     系统中只有他们俩,而且nice值相同,那么原始情况下没人的cpu 使用比例都是50%. 开始假设
+     编辑器先运行, 很快它就会等待IO让出CPU, 所以cpu使用比例也没多少==>1 % now. 视频
+     解码马上开始运行. 然后占用的cpu比例很大==> 35%. 这个时候文字编辑器又收到了IO返回
+     因为他的cpu使用率远远小于视频解码器,所以它能立刻抢占视频解码器.
+** Scheduler Classes
+   + Linux的调度器是模块话的.好让不同的调度器去调度不同类型的进程
+** Process Scheduling in Unix Systems
+   + 传统的Unix调度比较粗犷.每个process给个时间片和优先级,这样做有很多问题:
+     1) 因为有级别和时间片,优先级高的进程和优先级低的进程共存的时候没问题.
+	但是如果所有进程都是低优先级,那么调度就会非常频繁(比如刚才编辑器
+	解码器那个例子,如果两者时间片很短,那就调度台频繁了.Linux肯定没这个
+	问题嘛,一人50%)
+     2) 数据分布不均匀. nice值在尾端的进程之间时间片差距太大.
+     3) 是节拍器的整数倍,导致进程间的差距不一
+     4) 给交互进程开了后门.
+** The Linux Scheduling Implementation
+   + 下面介绍CFS的四个部分
+*** Time Accounting:
+    + 虽然CFS不再有时间片的概念,但是还是要记录用掉的时间,一遍能保证大家相对的公平, CFS
+      使用shed_entity来记录进程数目:
+      #+begin_src c
+        struct sched_entity {
+            struct load_weight      load;
+            struct rb_node          run_node;
+            struct list_head        group_node;
+            unsigned int            on_rq;
+            u64                     exec_start;
+            u64                     sum_exec_runtime;
+            u64                     vruntim;
+            u64                     prev_sum_exec_runtime;
+            //....
+        }
+      #+end_src
+    + sched_entity存在在task_struct里面叫做se
+     
+     
+
+
+
+
 	
    
 
