@@ -347,8 +347,42 @@
             //....
         }
       #+end_src
-    + sched_entity存在在task_struct里面叫做se
-     
+    + sched_entity存在在task_struct里面叫做se.
+*** The Virtual Runtime
+    + 上面se其中一个成员变量是保存进程的虚拟运行时间的.他是实习运行时间加权运行进程数目
+      得到的值.
+    + virtual runtime的单位是ns, 和timer的节拍就没有关系了. 这个vruntim的设计是为了
+      大约估计每个process的运行虚拟时间.因为我们的多核cpu不是理论中那么完美,理论情况下
+      同一个权限的process应该一直都有一样的vruntim, 也就不用再去计算,然后相互平衡了.
+    + 每次每个process变成runable, unrunnable或者block的时候, 就会调用update_curr()
+      来进行修正se里面的vruntime.
+*** Process Selection
+    + 我们知道, 因为我们不可能实现完全的多任务,所以Linux为了平衡process, 采取了非常
+      简单的选择process的策略:谁的virtual time最小下面就先让谁运行.
+    + CFS 使用了红黑树来管理所有的runnable的process, 可以迅速的找到有最小vruntime值
+      的process.
+*** Picking the Next Task
+    + Linux使用函数__pick_next_entity()来找到下一个运行的process, 从代码中我们可以看
+      到每次并不是真的找到红黑树最左下的进程,这个值其实是被rb_leftmost变量缓存的
+      #+begin_src c
+        static struct sched_entity *__pick_next_entity(struct cfs_rq *cfs_rq) {
+            struct rb_node *left = cfs_rq->rb_leftmost;
+            if (!left) {
+                return NULL;
+            }
+            return rb_entry(left, struct sched_entity, run_mode);
+        }
+      #+end_src
+    + 如果leftmost什么值都没有的话,返回NULL, 这个时候CFS会去调度idle task
+*** Adding Process to the Tree
+    + 没当有新的process被创建,或者process被唤醒的时候, 我们要把新的proces加入到红黑树
+      里面去, 这个红黑树的key就是vruntime,
+    + 这个把process加入红黑树的函数和其他没有什么区别, 唯一不同的是,我们不在乎vruntime
+      冲突,一样的vruntime那就放到一块.
+*** Removing Processes from the Tree
+    + 当有process介绍, 或者process被block的时候, 我们i就可以从红黑树里面移除这个process
+*** The Scheduler Entry Point
+    + 调度的核心函数是schedule(), 定义在kernel/sched.c
      
 
 
