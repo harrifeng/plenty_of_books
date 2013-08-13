@@ -382,7 +382,97 @@
 *** Removing Processes from the Tree
     + 当有process介绍, 或者process被block的时候, 我们i就可以从红黑树里面移除这个process
 *** The Scheduler Entry Point
-    + 调度的核心函数是schedule(), 定义在kernel/sched.c
+    + 调度的核心函数是schedule(), 定义在kernel/sched.c, 而schedule()函数主要的
+      工作都是由pick_next_task这个函数完成的
+      #+begin_src c
+        /*
+         ,* pick up the hightest-proi task
+         ,*/
+        static inline struct task_struct *
+        pick_next_task(struct rq *rq)
+        {
+            const struct sched_class *class;
+            struct task_struct *p;
+            /*
+             ,* 下面这段代码是说,我们总共有nr_running个process在跑,如果cfs也有
+             ,* 这么多的process在跑,说明所有的进程都是CFS在调度,都是普通进程,没有
+             ,* real time的(这也是大多数的情况)
+             ,*/
+            if (likely(rq->nr_running == rq->cfs.nr_running)) {
+                p = fair_sched_class.pick_next_task(rq);
+                if (likely(p))
+                    return p;
+            }
+        
+            class = sched_class_highest;
+            for (; ;) {
+                /*
+                 * 每个class里面的pick_next_task和总的这个不是一个函数,比如CFS
+                 * 就是用pick_next_entity()来实现pick_next_task()的.
+                 */
+                p = class->pick_next_task(rq);
+                if (p) {
+                    return p;
+                }
+                /*
+                 ,* 不可能返回NULL值, 因为总有一个叫idle 的 schedule class
+                 ,*/
+                class = class->next;
+            }
+        };
+      #+end_src
+*** Sleeping and Waking Up
+    + 一旦process不想运行,就sleep, 然后就会把自己从调动红黑树中删除,加入自己到等待队列(Wait Queue), 然后调用schedule()
+    + 一旦被唤醒那就是相反, 设置runnable, 从等待队列删除, 插入红黑树,是否调用schedule那就暂时不知道了
+*** Wait Queues
+    + 在内核中,进入睡眠是通过把自己加入到等待队列里面, 睡眠和唤醒的实现要非常小心, 因为很可能会引入竞争.
+      #+begin_src c
+        /* 'q' is the wait queue we wish to sleep on */
+        DEFINE_WAIT(wait); // create one queue node statically
+        
+        add_wait_queue(q, &wait);
+        while (!condition) { //防止虚假唤醒存在
+            prepare_to_wait(&q, &wait, TASK_INTERRUPTIBLE);
+            if (signal_pending(current)){
+                /* handle singnal */
+            }
+            //肯定要交出cpu了,因为自己的state已经不是runable了,
+            //vruntime再小也不会轮到自己运行了.
+            schedule();
+        }
+        //condition发生了,重新调度到自己,把自己解放出来
+        finish_wait(&q, &wait); 
+      #+end_src
+*** Waking Up
+    + 我们是通过wake_up()来激活某一些特定的进程的(它们通常加入到同一个queue里面)
+    + wake_up()==> 
+      1) try_to_wake_up(), 设置TASK_RUNNING
+      2) enqueue_task(),加入到红黑树
+      3) 设置need_resched, 如果有更需要运行的进程.
+    + 一般谁引发某个event,它就会来调用wake_up()比如数据从硬盘上来的实惠, VFS会
+      调用wake_up()
+    + 一个process被wake up,并不代表着它所等待的event就发生了,因为存在着虚假唤醒
+      (Spurious wake-ups): 也就是说存在一种可能,我们的process被唤醒了,但是其实它
+      所等待的condition还没真的发生, 所以我们要用一个while循环来保护, 在wait退出
+      以后继续检查一遍condition,double check一下.
+    + 这里的while保护机制,其实是多线程编程的要求. 而不仅仅是内核这么做.比如在下例
+      中, 正常情况下, 其他thread肯定会先设置full为true, 然后出发signal, 但是:
+      1) 在多线程的情况下,并不总是线性运行
+      2) 程序员可能犯错误,把设置为full写到signal后面,我们多做一次check何乐而不为呢.
+      #+begin_src c
+        /* In any waiting thread */
+        while (!buf->full) {
+            wait(&buf->cond, &buf->lock);
+        }
+        
+        /* In any other thread; */
+        if (buf->n >= buf->size) {
+            buf->full = 1;
+            signal(&buf->cond);
+        }
+      #+end_src
+
+    
      
 
 
