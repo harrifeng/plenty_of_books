@@ -1,4 +1,6 @@
 #+OPTIONS:^:{}
+* Chapter 1 Introduction to the Linux Krenel
+* Chapter 2 Getting Started with the Kernel
 * Chapter 3 Process Management
 ** The Process
    + 进程简言之就是正在执行的程序和它所占有的资源的总和, 它所占有的资源,
@@ -107,41 +109,30 @@
        2) 要么是在debug的适合收到任何的信号
    + 这些状态的转换图如下:
      #+begin_example
-                                                                                                                                                    
-           +----------------------+                                                                                   +----------------------+ 
-           |  Existing task calls |                                                                                   |                      | 
-           |  fork() to create    |                                                                                   |  Task is termminated | 
-           |  a new process       |                                                                                   |                      | 
-           |                      |                                                                                   |                      | 
-           |                      |                     Scheduler dispatches task to run:                             |                      | 
-           |                      |                     schedule() calls context_switch()                             |                      | 
-           |                      |            +------------------------------------------------------+               |                      | 
-           +-----------+----------+            |                                                      |               +----------------------+ 
-                       |                       |                                                      |                            ^           
-                       |            +----------+-----------+                             +------------V-----------+                |           
-                       |            |                      |                             |                        |                |           
-                       | Task forks |  TASK_RUNNING        |                             |  TASK_RUNNING          |  Task exits via|           
-                       |            |  (ready but not      |                             |  (running)             |    do_exit     |           
-                       +----------->|   running)           |                             |                        +----------------+           
-                                    |                      |                             |                        |                            
-                                    +----------------------+                             |                        |                            
-                                          ^     ^             Task is preempted          +------------+----+------+                            
-                                          |     |             by higher priority task                 |    |                                   
-                                          |     +-----------------------------------------------------+    |                                   
-                                          |                                                                |                                   
-                                          |                                                                |                                   
-                                          |                                                                |                                   
-                                          |                +----------------------------+                  |                                   
-                                          |                |                            |                                                      
-                                          |                |   TASK_INTERRUPTIBLE       |    Task sleeps on|                                   
-                                          |                |            or              |   wait queue for |                                   
-                                          |                |   TASK_UNINTERRUPTIBLE     |   a specific event                                   
-                                          |                |          (waiting)         |                  |                                   
-                                          +----------------+                            <------------------+                                   
-                                    Event occurs and task  |                            |                                                      
-                                    is woken up and placed |                            |                                                      
-                                    vack on the run queu   |                            |                                                      
-                                                           +----------------------------+                                                      
+       +-----------------+                                    +-----------------+
+       |Existing task    |                                    |Task is          |
+       |calls fork() to  |                                    |Terminated       |
+       |create new task  |   Scheduler dispatches task to run |                 |
+       |                 |   schedule() calls context_switch()|                 |
+       +---+-------------+ +-------------------------------+  +-------------^---+
+           |fork()         |                               |                |
+           |    +----------+------+                +-------V---------+      |
+           |    | TASK_RUNNING    |                |  TASK_RUNNING   |      |
+           |    | (ready but not  |                |   (running)     |      |
+           +---->  running)       |                |                 +------+
+                |                 |                |                 |do_exit()
+                +-^-----^---------+                +-------+--------++
+                  |     |Task is preempted by higher prior |        |
+                  |     +----------------------------------+        |
+                  |                                                 |Task sleeps
+                  |                                                 |on wait que
+                  |        +-----------------------------+          |for a given
+                  |        |  TASK_INTERRUPTIBLE         |          |event
+                  |        |        or                   |          |
+                  +--------+  TASK_UNINTERRUPTIBLE       |          |
+        Events occurs, tsk |                             <----------+
+        is woken up, placed+-----------------------------+
+        back to runqueue.
      #+end_example
 ** Manipulating the Current Process State
    + 在Linux中要考虑多核的情况,所以不能直接task->state = state, 需要一个函数来完成
@@ -152,8 +143,8 @@
 ** Process Context
    + 所谓"进程上下文"是指的,当process开始运行的时候一般是在用户空间, 而用户空间的功能
      是有限的,它会用到内核的功能,这个时候可以通过:
-     1) 系统调用
-     2) 触发异常
+     1)系统调用
+     2)触发异常
    + 当我们通过上面的方式进入内核态的时候,内核其实是帮用户态的process在工作,我们就说
      这种工作状态为"进程上下文"(内核代表进程执行)
    + 在进程上下文中, current宏是有效的, 因为内核是知道在帮助哪个用户的process在工作,
@@ -167,9 +158,8 @@
 ** Process Creation
    + 在类Unix系统中, 进程的创建都很独特: 其他操作系统一般是在新的用户空间创建新
      的进程. 而Unix把这个工作分成了两步:
-     1) fork : 创建一个子进程,只有一些参数和父进程不一样(parentID, PID不会继承
-	挂起的信号也不会继承)
-     2) exec() : 把新的可执行程序导入到地址空间开始执行
+     1) Fork: 创建一个子进程,只有一些参数和父进程不一样(parentID, PID不会继承挂起的信号也不会继承)
+     2) exec():把新的可执行程序导入到地址空间开始执行
 ** Copy-on-Write:
    + 我们说Unix系统进程创建之所以独特,也就是独特在fork上面,因为传统的fork会吧所有
      的父进程的资源复制一遍给子进程.因为子进程并不需要那么多的资源,而且很可能
@@ -184,28 +174,19 @@
 ** Forking
    + Linux的fork==>clone(), clone()通过一些flag来判断父子进程共享哪些资源
    + clone()内部==>do_fork()
-   + do_fork()==>copy_process(), 真正的工作在这里执行
-     1) 调用dup_task_struct(), 创建如下:
-	1. 一个新的内核栈,一般是8K或者4K, 地址是新的和老的不一样
-	2. 一个新的thread_info(在内核栈内部), task成员变量一会会指向下面的task_struct
-	3. 一个新的task_struct, 内容和父进程的一样(并将thread_info内部的指针地址更改)
-     2) 检查一下创建新进程后,当前用户的资源有没有超标
-     3) 因为刚才的数据都是复制的,父子的task_struct是一样的,但是为了区分父子,肯定有很多
-	属性要不一样:比如一些计数的属性要清零. 但大部分还是一样的.这里主要是属性,不是"写时
-	拷贝"的那些数据
-     4) 子进程被设置为TASK_UNINTERRUPTIBLE防止它运行
-     5) copy_process()==>copy_flag() 更新子进程的flags: 清零PF_SUPERPRIV(表明进程
-	是否拥有超级用户权限), 清零PF_FORKNOEXEC(表明还没有调用exec())
-     6) copy_process()==>alloc_pid()来赋予一个新的PID
-     7) 根据传入clone()的flag的不同, copy_process()会选择对以下的资源才去复制一份
-	给子进程,还是共享(一般来说如果是thread的话,那么这些信息是共享的,在Linux系统
-	中就是如果几个process共享这些信息,那么他们就是thread):
-	+ 打开的文件
-	+ 文件系统信息
-	+ 信号处理函数
-	+ 进程地址空间
-	+ namespce
-     8) copy_process()会释放资源然后返回给调用者一个指向新子进程的指针.
+   + do_fork()==>copy_process(), 真正的工作在这里执行:
+     - 调用dup_task_struct(), 创建如下:
+     - 检查一下创建新进程后,当前用户的资源有没有超标
+     - 因为刚才的数据都是复制的,父子的task_struct是一样的,但是为了区分父子,肯定有很多属
+       性要不一样:比如一些计数的属性要清零. 但大部分还是一样的.这里主要是属性,不是
+       "写时拷贝"的那些数据
+     - 子进程被设置为TASK_UNINTERRUPTIBLE防止它运行
+     - copy_process()==>copy_flag() 更新子进程的flags: 清零PF_SUPERPRIV(表明进程是
+       否拥有超级用户权限), 清零PF_FORKNOEXEC(表明还没有调用exec())
+     - 根据传入clone()的flag的不同, copy_process()会选择对以下的资源才去复制一份给子
+       进程,还是共享(一般来说如果是thread的话,那么这些信息是共享的,在Linux系统中就是如
+       果几个process共享这些信息,那么他们就是thread):
+     - copy_process()会释放资源然后返回给调用者一个指向新子进程的指针.
    + copy_process()<==do_fork()完成任务返回了do_fork, 如果copy_process()调用成功
      那么新的子进程会比父进程先唤醒, 这是基于这样一个事实: 如果父进程先唤醒,那么可能会
      写入address space, 这样一来,就会调用写时拷贝来复制一份资源!如果子进程先调用,那么
@@ -263,7 +244,7 @@
      1) release_task()==>__exit_signal()==>__unhash_process()==>detach_pid(),
 	把进程从pidhash已经task list中删除
      2) __exit_signal()会释放已经退出的进程的所有资源
-     3) 如果这个是thread group的最后一员,而且leader已经zombie了,那么就通知zombie 
+     3) 如果这个是thread group的最后一员,而且leader已经zombie了,那么就通知zombie
         leader的父进程
      4) release_task()==>put_task_struct()会把传统三强铁山角(内核栈, thread_info,
         以及task_struct)释放掉
@@ -284,7 +265,7 @@
 ** Linux's Process Scheduler
    + 早期linux的调度设计方法简单
    + 2.5开始设计出O(1)调度算法,能够很好的应多多核
-   + 后来发现O(1)调度算法对于人机交互的进程很不友好,最终引入了CFS(Completely 
+   + 后来发现O(1)调度算法对于人机交互的进程很不友好,最终引入了CFS(Completely
      Fair Scheduler)
 ** I/O-Bound Versus Processor-Bound Processes
    + 所谓I/O-Bound的进程就是真正运行的不多,总是在等IO的进程.这种进程调度的时候
@@ -319,13 +300,12 @@
      解码马上开始运行. 然后占用的cpu比例很大==> 35%. 这个时候文字编辑器又收到了IO返回
      因为他的cpu使用率远远小于视频解码器,所以它能立刻抢占视频解码器.
 ** Scheduler Classes
-   + Linux的调度器是模块话的.好让不同的调度器去调度不同类型的进程
+   + Linux的调度器是模块化的.好让不同的调度器去调度不同类型的进程
 ** Process Scheduling in Unix Systems
    + 传统的Unix调度比较粗犷.每个process给个时间片和优先级,这样做有很多问题:
-     1) 因为有级别和时间片,优先级高的进程和优先级低的进程共存的时候没问题.
-	但是如果所有进程都是低优先级,那么调度就会非常频繁(比如刚才编辑器
-	解码器那个例子,如果两者时间片很短,那就调度台频繁了.Linux肯定没这个
-	问题嘛,一人50%)
+     1) 因为有级别和时间片,优先级高的进程和优先级低的进程共存的时候没问题.但是如果所有进程
+        都是低优先级,那么调度就会非常频繁(比如刚才编辑器解码器那个例子,如果两者时间片很短,
+        那就调度台频繁了.Linux肯定没这个问题嘛,一人50%)
      2) 数据分布不均匀. nice值在尾端的进程之间时间片差距太大.
      3) 是节拍器的整数倍,导致进程间的差距不一
      4) 给交互进程开了后门.
@@ -404,7 +384,7 @@
                 if (likely(p))
                     return p;
             }
-        
+
             class = sched_class_highest;
             for (; ;) {
                 /*
@@ -433,7 +413,7 @@
       #+begin_src c
         /* 'q' is the wait queue we wish to sleep on */
         DEFINE_WAIT(wait); // create one queue node statically
-        
+
         add_wait_queue(q, &wait);
         while (!condition) { //防止虚假唤醒存在
             prepare_to_wait(&q, &wait, TASK_INTERRUPTIBLE);
@@ -445,11 +425,11 @@
             schedule();
         }
         //condition发生了,重新调度到自己,把自己解放出来
-        finish_wait(&q, &wait); 
+        finish_wait(&q, &wait);
       #+end_src
 *** Waking Up
     + 我们是通过wake_up()来激活某一些特定的进程的(它们通常加入到同一个queue里面)
-    + wake_up()==> 
+    + wake_up()==>
       1) try_to_wake_up(), 设置TASK_RUNNING
       2) enqueue_task(),加入到红黑树
       3) 设置need_resched, 如果有更需要运行的进程.
@@ -468,7 +448,7 @@
         while (!buf->full) {
             wait(&buf->cond, &buf->lock);
         }
-        
+
         /* In any other thread; */
         if (buf->n >= buf->size) {
             buf->full = 1;
@@ -487,7 +467,7 @@
 		   |												  \|/
 		+--+-----------+								  +----.------------+
 		|			   | and task executes signal handler |					|
-		| TASK_RUNNING |<--------------------------------->TASK_INTERRUPTIBLE  
+		| TASK_RUNNING |<--------------------------------->TASK_INTERRUPTIBLE
 		|			   |								  |					|
 		+--.-----------+								  +----+------------+
 		  /|\												   |
@@ -497,15 +477,3 @@
             add the task to a runqueue, and calls schedule().
             __remove_wait_queue() removes the task from the wait queue.
       #+end_example
-
-    
-     
-
-
-
-
-	
-   
-
-
-     
