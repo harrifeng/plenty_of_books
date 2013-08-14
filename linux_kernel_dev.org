@@ -263,10 +263,10 @@
      1) release_task()==>__exit_signal()==>__unhash_process()==>detach_pid(),
 	把进程从pidhash已经task list中删除
      2) __exit_signal()会释放已经退出的进程的所有资源
-     3) 如果这个是thread group的最后一员,而且leader已经zombie了,那么就通知zombie leader
-	的父进程
-     4) release_task()==>put_task_struct()会把传统三强铁山角(内核栈, thread_info,以及
-	task_struct)释放掉
+     3) 如果这个是thread group的最后一员,而且leader已经zombie了,那么就通知zombie 
+        leader的父进程
+     4) release_task()==>put_task_struct()会把传统三强铁山角(内核栈, thread_info,
+        以及task_struct)释放掉
 ** The Dilemma of the Parentless Task
    + 如果父进程在子进程之前就退出了,那么我们可以:
      1) 从当前的thread groupd里面找一个进程做自己的父进程
@@ -380,7 +380,8 @@
     + 这个把process加入红黑树的函数和其他没有什么区别, 唯一不同的是,我们不在乎vruntime
       冲突,一样的vruntime那就放到一块.
 *** Removing Processes from the Tree
-    + 当有process介绍, 或者process被block的时候, 我们i就可以从红黑树里面移除这个process
+    + 当有process介绍, 或者process被block的时候, 我们i就可以从红黑树里面移除这个
+      process
 *** The Scheduler Entry Point
     + 调度的核心函数是schedule(), 定义在kernel/sched.c, 而schedule()函数主要的
       工作都是由pick_next_task这个函数完成的
@@ -422,10 +423,13 @@
         };
       #+end_src
 *** Sleeping and Waking Up
-    + 一旦process不想运行,就sleep, 然后就会把自己从调动红黑树中删除,加入自己到等待队列(Wait Queue), 然后调用schedule()
-    + 一旦被唤醒那就是相反, 设置runnable, 从等待队列删除, 插入红黑树,是否调用schedule那就暂时不知道了
+    + 一旦process不想运行,就sleep, 然后就会把自己从调动红黑树中删除,加入自己到等待队列
+      (Wait Queue), 然后调用schedule()
+    + 一旦被唤醒那就是相反, 设置runnable, 从等待队列删除, 插入红黑树,是否调用schedule那
+      就暂时不知道了
 *** Wait Queues
-    + 在内核中,进入睡眠是通过把自己加入到等待队列里面, 睡眠和唤醒的实现要非常小心, 因为很可能会引入竞争.
+    + 在内核中,进入睡眠是通过把自己加入到等待队列里面, 睡眠和唤醒的实现要非常小心, 因为很
+      可能会引入竞争.
       #+begin_src c
         /* 'q' is the wait queue we wish to sleep on */
         DEFINE_WAIT(wait); // create one queue node statically
