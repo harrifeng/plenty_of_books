@@ -477,3 +477,28 @@
             add the task to a runqueue, and calls schedule().
             __remove_wait_queue() removes the task from the wait queue.
       #+end_example
+*** Preemption and Context Switching
+    + schedule()==>context_switch()进行上下文切换:
+      - 调用switch_mm(), 切换新老task的virtual memory mapping
+      - 调用switch_to(), 切换新老task的处理器state
+    + 一个task不能完全靠自觉性来决定自己占用cpu多久.每当need_resched flag被设置
+      就必须进行进程切换了,这个flag不可能被正在运行task进行设置, 设置的肯定是能和
+      cpu同时运行的其他部件:
+      - 频率始终可以通过scheduler_tick()来设置这个flag, 这种情况通常是process
+        运行的够长了.
+      - 外部的中断处理可以通过try_to_wake_up()来设置个flag, 这种情况是有新的
+        优先级更高的task出现了
+    + 返回用户空间,或者从终端返回的话,都要去检查need_resched.
+    + need_resched这个是每个process的task_struct里面都有一份的.虽然全局又一个
+      flag就可以了,但是每个process都有一个的话,用起来更快(current的存在)
+*** User Preemption
+    + 当从内核空间跳入到用户空间的时候(要么从system call返回,要么是从interrupt返
+      回), 会去检测need_resched, 因为这个时候kernel转到进程A是安全的,那么如果需
+      要调度,我转到进程B也肯定是安全的.
+*** Kernel Preemption
+    + 和其他Unix变体不同, Linux的内核也是可抢占的.任何"安全状态"下的kernel进程
+      (也就是kernel在为某个进程服务而运行,比如为某个进程运行system call)都是可
+      以被抢占的
+    + 所谓"安全状态"下的kernel是指:没有lock
+      
+
