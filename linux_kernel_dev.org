@@ -500,5 +500,19 @@
       (也就是kernel在为某个进程服务而运行,比如为某个进程运行system call)都是可
       以被抢占的
     + 所谓"安全状态"下的kernel是指:没有lock
+    + 从2.6开始支持抢占内核,为此在每个thread_info里面增加了一个变量preempt_count
+      来记录当前task拥有的lock.每当此数字为0的时候,内核就是可抢占的.
+    + 如果从interrupt返回到用户空间的话,那么check need_resched然后决定是否调度
+      就是前面讲的user preemption, 如果interrupt返回到内核空间的话,如果
+      preempt_count为0的话,说明没lock,此时也是可以check need_resched调度的,
+      如果不需要调度,那么就返回原本该返回的位置.
+    + 也可以显式调用内核抢占,比如当在内核中的task被block,或者调用schedule()的时候,
+      这种情况下, 抢占是一直发生的.无论锁的情况怎样.
+    + 总结一下内核抢占发生的情形就是:
+      - 当有中断处理退出并且中断处理返回的是内核空间
+      - 当内核变的可以被抢占preempt_count为0
+      - 当内核task显式调用schedule(), 自愿放弃cpu
+      - 当内核task被block(也就会导致schedule())
+
       
 
