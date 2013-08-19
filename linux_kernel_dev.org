@@ -516,3 +516,85 @@
 
       
 
+*** Real-Time Scheduling Policies
+    + 常规的调度当然是使用调度策略SCHED_NORMAL, 使用的调度器是Completely Fair
+      Scheduler.
+    + 实时进程有两种调度策略SCHED_FIFO(先到先服务), SCHED_RR(轮循), 使用一个在
+      kernel_sched_rt.c中定义的实时调度器. 实时进程永远比SCHED_NORMAL的优先级
+      要高
+    + SCHED_FIFO 就是一旦有个进程运行,除非有更高优先级的进程,否则当前进程将一直
+      持有CPU,直到它自愿放弃. 高优先级的进程运行完才轮到低优先级运行.
+    + SCHED_RR 和SCHED_FIFO类似,只不过是每个进程有一个时间片,如果一个进程用完了
+      时间片,那么它必须让给相同优先级的其他进程.
+    + Linux提供的是软实时性, 所谓软实时性,就是不保证在一定的时间内(时间很短)完成
+      高优先级进程抢占低优先级进程的调度
+    + 实时调度的优先级是0-99, SCHED_NORMAL的优先级是100-139(对应nice值-20到19)
+*** Processor Affinity System Calls
+    + Linux可以保证某些进程只在cpu的某几个核中运行, 在task_struct 中有个叫做
+      cpus_allowed的成员变量,其中的每个bit都是代表一个cpu核心, 默认状态下每个
+      bit都是1, 也就是process可以运行在各个核中.
+*** Yielding Processor Time
+    + Linux 提供了sched_yield(), 当前运行的进程可以通过它来放弃运行(并且很可能
+      在一段时间内都不能运行), 其原理是把当前进程从active array移动到expired 
+      array.
+    + 因为实时进程从来不expire,所以实时进程调用sched_yield()的时候是把进程停止
+      然后插入到priority list的最后.
+* Chapter 5 System Calls
+** Communicating with the kernel
+   + 系统调用提供了一个连接用户空间进程和硬件的过渡层,这个层出现有下面几个原因:
+     - 提供抽象的硬件接口, 用户不需要关心硬件的类型
+     - 系统调用保证了系统的安全性和稳定性
+     - 能为进程提供虚拟化.
+** APIs, POSIX, and C LIbrary
+   + API就是程序使用的接口, 这些接口可以用零个,一个或者多个系统调用实现
+   + POSIX这种API的一个事实上的标准
+   + 系统调用的接口,在Linux上面有一部分是通过C library来实现的.
+   + 从编程者的角度来看, system call是没有什么关联的.程序员关心的是API.
+   + 内核只是关系system call, 至于其他API如何使用system call,它不关心.
+** Syscalls
+   + 在Linux中, system call被叫做syscalls, 调用者看起来就像是C语言的函数, 返回值
+     为0通常表示成功,失败的话,会返回非零,并且在errno变量里面写入出错值, 这个值通过
+     函数比如perror()可以被解读.
+   + 我们来看getpid()的实现
+     #+begin_src c
+       SYSCALL_DEFINE0(getpid)
+       {
+           // returns current->tgid,  thread group id in Linux is PID
+           return task_tgid_vnr(current); 
+       }
+     #+end_src
+   + SYSCALL_DEFINE0是用来定义没有参数的系统调用的宏,展开来就是
+     #+begin_src c
+       asmlinkage long sys_getpid(void)
+     #+end_src
+   + asmlinkage 是告诉编译器只看本函数参数的stack,是所有系统调用的标配.
+   + long是为了32位64位兼容
+   + getpid()在内核中被定义为sys_getpid(). 这是命名常规,内核都会加上个sys_
+** System Call Numbers
+   + 每个系统调用都有自己的一个编号的,在被使用的时候都是用编号的,所有编号不能变
+   + 为了应付不常出现的编号缺失等问题, Linux发明了sys_ni_syscall(),
+     它什么也不干,就是返回-ENOSYS
+** System Call
+   + Linux上面的系统调用非常迅速,这得益于Linux上面快速的上下文切换,以及西东调用
+     处理的简洁
+** System Call Handler
+   + 如果用户空间的进程想做些高难度自己没权限的操作,比如读取文件,那么它就要告诉
+     内核,所用的方法就是:软件中断(也就是exception, 因为软件中断是cpu可以预见的
+     前面一个指令运行完才可能发生的中断, 而硬件中断,也就是interrupt,是异步的
+     因为不是cpu发出的,是其他外在硬件发出的,可以在任何时间点出现)
+   + 系统中断在x86系统中就是128号中断, 代码是int $0x80. 这段汇编过后, 程序就
+     算进入kernel了, 会跳到128号中断的handler处(又叫system_call(), 原来这
+     个代码通常在x86系统上是在entry_64.S上实现的)
+** Denoting the Correct System Call
+   + 光光进入kernel模式是没用的, 所以进入内核的时候,要带着系统调用号. x86系统
+     中, 这个系统调用号是存在eax 寄存器里面的.
+   + 在kernel mode要检查这个数是不是待遇NR_syscalls, 如果大于就出错,否则就去
+     system call table里面找到相应的函数指针, 然后去调用.
+** Parameter Passing
+   + 函数调用除了函数指针,还得有参数, 在x86系统中, 通常前五个参数分别存在ebx, 
+     ecx, edx, esi和edi, 如果六个或者六个以上的参数,通过一个寄存器传递一个
+     指向用户空间内存的指针.
+   + 返回值还是通过寄存器,比如eax, 返回给用户空间
+
+      
+      
