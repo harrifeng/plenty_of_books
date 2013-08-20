@@ -1,0 +1,21 @@
+* tornado.web
+  + tornado.web 提供了一个简单的web框架, 它拥有异步的特性,可以很容易的进行扩充
+    (scale). 并且应对大量的连接. 特别适合推送(Long-Polling)服务:
+    - 推送(Long-Polling),指的是客户端在发起一次请求后立刻挂起, 由服务器来主动
+      发送更新信息.
+    - 轮询(Polling), 是指的不管服务器端有没有更新, 客户端斗定期挂起发送请求进行
+      查询.
+  + Tornado里面的RequestHandler中,所有的函数都不是线程安全的. 这些函数都必须在
+    主thread中调用.如果你使用了多个的thread, 那么最好使用IOLoop.add_callback
+    来把主动权还给主thread
+** class RequestHandler
+   + 继承这个函数, 并且定义函数get()以及post()来处理handler
+   + SUPPORTED_METHODS 定义了部分HTTP支持的参数:
+     - PUT : 其实就是'增'
+     - DELETE :其实就是'删'
+     - POST : 其实就是'改'
+     - GET :其实就是'查'
+     - HEAD : 简单的'查', 只'查' 头部
+     - PATCH: 简单的'改', 不是把整个结构体传回去改,而是只传递diff的内容.
+     - OPTIONS:查询服务器可以支持的功能.
+       
