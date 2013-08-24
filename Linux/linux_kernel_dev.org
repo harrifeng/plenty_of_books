@@ -595,7 +595,69 @@
      ecx, edx, esi和edi, 如果六个或者六个以上的参数,通过一个寄存器传递一个
      指向用户空间内存的指针.
    + 返回值还是通过寄存器,比如eax, 返回给用户空间
-** Impl
+** Implementing System Calls
+   + system calls要考虑的事情很多,因为一旦施行,很多system call几十年都没有变
+   + system call一定要检查参数, 而且一些操作要运用特别提供的函数(函数会保障运行
+     的错误检查)比如从用户空间拷贝,使用copy_from_user, 拷贝到用户空间,使用
+     copy_to_user
+** System Call Context
+   + 前面说过了, system call是kernel替某个process在执行, 那么kernel在执行的时候,
+     current肯定指向调用system call的process
+   + 就算是在kernel执行,由于kernel也是可被抢占的,而新执行的task很可能也会用到刚刚
+     被抢占的system call,这就需要kernel要设计成"可重入(reentrant)"
+   + 每写完一个system call的时候,还需要如下三步来使得system call起作用:
+     - 在sys_call_table里面加一个新的item
+     - 在<asm/unistd.h>里面加一个syscall number
+     - 把syscall编译进内核.
+   + system call写完之后, 会用C库在外面包一层,使用者只使用C库就可以调用这些syscalls
+     了,也就是说,用户只看到C库,看不到syscall
+   + C是通过Linux提供的_syscalln()这个宏来调用syscall的,比如下面是如何在c中调用
+     open syscalls
+     #+begin_src c
+       /* syscall defined by kernel */
+       long open(const char *filename, int flags, int mode);
+       
+       /* Macro to use this syscalls */    
+       _syscall3(long, open, const char *, filename, int, flags, int, mode);   
+     #+end_src
+** Why Not to implement a System Call
+   + 说了这么多,还是不建议你自己实现系统调用.
+* Chapter 6 Kernel Data Structures
+* Chapter 7 Interrupts and Interrupt Handlers
+  + interrupt叫做中断,是硬件发出的(exception叫做异常, 是软件发出的). 之所以设计
+    interrupt是因为相比于cpu的运行速度,硬件的运行速度慢的不可理喻,cpu不可能发送一
+    个要求给硬件,然后等它. 它要去忙别的事情, interrupt就是用来让硬件通知cpu, "我
+    好了,下一步怎么办?"
+** Interrupts
+   + interrupts是由硬件发出的,而且每个中断都有一个interrupt value.使得操作系统
+     能够知道来的是哪个硬件发出的中断
+** Interrupt Handlers
+   + 操作系统对相应的中断做出反应的函数叫做interrupt handler,又叫ISR(interrupt
+     service routine)
+   + interrupt handler是属于内核处理设备的部分,叫做device driver
+   + 前面说了interrupt handler其实就是function, c语言写的.那kernel的其他部分
+     也是c function, 他们有什么不同么? 不同就是这些interrupt handler存在于一个
+     特殊的context, 叫做interrupt context, 这个context是原子的,也就是一口气
+     执行完,不能被block的
+   + 因为interrupt是随时来的,那么interrupt handler也就要随时调用,肆意抢占其他
+     进程,又因为它不能被block, 那么handler的涉及势必要快,不能让其他进程等的太久
+   + 而另一方面,很多时候kernel要"处理"的设备的请求不是那么快的,比如网络传输传很多,
+     不是一会就能传完的
+** Top Halves Versus Bottom Halves
+   + 前面说到了handler涉及的一些悖论. 既要快,事情还多? Linux的解决办法是,先做"紧
+     急且必要"的(top halves), 剩下的以后再做(bottom halves)
+   + 以网卡发送的interrupt为例:
+     - 网卡发送interrupt, kernel收到interrupt了以后,停下手中的工作,让相应的
+       interrupt handler去处理.
+     - interrupt handler 首先把网卡上的packet拷贝到内存, 然后通知网卡可以继续
+       工作了. 这些工作是"紧急且必要的"因为如果不赶紧拷, 网卡可能会溢出.
+     - 一旦内容被拷贝到内存, handler的top halves就结束了, 系统赶紧回到刚才运行
+       的地方.
+     - 剩下讲内存里面的数据怎么处理就是bottom half的事情了
+** Registering an Interrupt Handler
+   + 
+     
+     
 
       
       
