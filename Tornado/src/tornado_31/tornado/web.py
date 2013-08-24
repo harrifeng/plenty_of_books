@@ -149,7 +149,6 @@ class RequestHandler(object):
 
     def initialize(self):
         """Hook for subclass initialization.
-
         A dictionary passed as the third argument of a url spec will be
         supplied as keyword arguments to initialize().
 
@@ -165,6 +164,8 @@ class RequestHandler(object):
             app = Application([
                 (r'/user/(.*)', ProfileHandler, dict(database=database)),
                 ])
+        [hfeng] handler got its detailed information by giving a third
+        arguments
         """
         pass
 
