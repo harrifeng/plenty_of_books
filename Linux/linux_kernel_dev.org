@@ -655,7 +655,73 @@
        的地方.
      - 剩下讲内存里面的数据怎么处理就是bottom half的事情了
 ** Registering an Interrupt Handler
-   + 
+   + 设备是通过驱动和操作系统发生联系的. 所以一个driver可以注册一个interrupt
+     handler,注册的同时也就选定了一个interrupt line
+     #+begin_src c
+       /* rquest_irq: allocate a given interrupt line */
+       int request_irq(unsigned int irq,
+                       irq_handler_t handler,
+                       unsigned long flags,
+                       const char *name,
+                       void *dev)
+     #+end_src
+   + 参数irq是指的interrupt number,对于传统设备来说, 这个数字往往是硬编码进去的.
+     对于其他大多数设备,这个值是可以探测获取或者编程动态确定
+   + 参数handler是一个指针,指向处理这个终端的函数,其原型如下:
+     #+begin_src c
+       typedef irqreturn_t (*irq_handler_t)(int, void *);
+     #+end_src
+   + 参数flag可以是如下flag的组合:
+     - IRQF_DISABLED :如果为1, kernel会在处理它的时候,屏蔽掉所有中断(包括和他类型
+       一致的其他中断), 如果为0, kernel会在处理它的时候,同时检查其他中断(但是和他
+       类型一致的其他中断则还是屏蔽的, 不仅仅是同一类型,公用一个interrupt line的所有
+       中断都会被屏蔽,这是为了公用interrupt line, 同时简化linux的设计.), 大多数
+       handler不会设置这个flag,其存在是为了兼容原来的SA_INTERRUPT flag
+     - IRQF_SAMPLE_RANDOM:如果为1, 那么这个中断的频率会为kernel的随机数池做贡献,
+       如果是系统时钟等可产生固定频率的设备,请不要设置
+     - IRQF_TIMER:这个flag说明handler处理系统时钟相关中断
+     - IRQF_SHARED:这个flag说明当前handler使用的interrupt line是被多个handler所
+       共有的.(因为一个interrupt line其实最好只有一个硬件, 既然Linux选择了share,
+       那么丢失interrupt的事情肯定是会发生的)
+   + 参数name是为了给用户看的.一个有意义的名字,比如键盘的handler就叫做keyboard
+   + 参数dev是和前面的flag IRQF_SHARED配合使用的.当某个handler被释放的时候,如果
+     它又是share interrupt line的,那么就需要dev来唯一确定它是哪一个(有点GUID的
+     感觉), 这个参数是个void类型的指针, 实践中为了保持唯一性,一般传递driver 设备
+     的struct 地址.
+** Freeing an interrupt handler
+   + 如果驱动卸载的时候,我们也要注销相应的中断处理程序. 如果是不shared的话,那么
+     释放这个中断处理程序, interrupt line也就disable了. 如果是shared的话,那么要
+     等到这条线上所有的中断处理程序都释放,才disable响应的interrupt line
+     #+begin_src c
+       void free_irq(unsigned int irq, void *dev)
+     #+end_src
+** Writing an Interrupt Handler
+   + interrupt handler的参数和request_irq里面是一致的. irq表示interrupt number,
+     dev还是那个GUID, 特别是在share interrupt line的情况下.
+     #+begin_src c
+       static irqreturn_t intr_handler(int irq, void *dev)
+     #+end_src
+   + 因为handler不会被其他文件的代码调用,所以设置为static(对其他文件不可见)
+   + 返回值可以有两个:
+     - IRQ_NONE : 说明interrupt handler在你的interrupt line上检测到了一个interrupt, 
+       但是发生源却不是你所说的设备(dev)
+     - IRQ_HANDLED: 说明interrupt handler在你的interrupt line 检测到了一个interrupt,
+       而且dev这个设备发出的.
+     - 两个变量设计的初衷,还是因为interrupt handler 共享了interrupt line. 通过返回值
+       来判断是谁发出的interrupt. 如果一个interrupt line里面所有的handler都返回IRQ_NONE,
+       那肯定是出问题了.
+     - 在硬件设计上面,也要考虑这个问题,一定有硬件的支持才可能知道到底这个interrupt line
+       上面发出的interrupt是谁发的.
+     - 每当在interrupt line上面有interrupt的时候, kernel会迅速的调用某个interrupt line
+       上面所有的handler. handler如果意识到不是自己发出的interrupt要迅速的退出. handler
+       一般是通过检查硬件的寄存器来判断是不是自己发出的interrupt.
+** Reentrancy and Interrupt Handlers
+   + interrupt handler在linux 上面的设计是不可重入的.如果一旦interrupt line里面的任意一
+     个handler开始运行,那么整个line都会被屏蔽,也就防止了同一个line上的其他interrupt的响应.
+     这也就说明同一个interrupt不可能被嵌套调用(调用一个handler的时候,被中断去执行同样的
+     handler的情况不存在), 这样简化了系统的设计. 当然也就意味着会丢失interrupt.
+** A Real-Life Interrupt Handler
+      
      
      
 
