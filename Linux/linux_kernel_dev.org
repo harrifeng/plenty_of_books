@@ -721,7 +721,57 @@
      这也就说明同一个interrupt不可能被嵌套调用(调用一个handler的时候,被中断去执行同样的
      handler的情况不存在), 这样简化了系统的设计. 当然也就意味着会丢失interrupt.
 ** A Real-Life Interrupt Handler
-      
+   + 我们来看一个真实的interrupt handler的例子.这个设备是RTC(实时时钟).它的作用
+     和现实生活中的闹钟差不多, 我们听到闹钟响了, 好比kernel听到interrupt来了.
+     #+begin_src c
+       /* register rtc_interrupt on rtc_irq */
+       if (request_irq(rtc_irq, rtc_interrupt, IRQF_SHARED, "rtc", (void*)&rtc_port)) {
+           printk(KERN_ERR "rtc: cannot register IRQ %d\n", rtc_irq);
+       }
+       
+       /* handler */
+       static irqreturn_t rtc_interrupt(int irq, void *dev) {
+           spin_lock(&rtc_lock);
+
+           rtc_irq_data += 0x100;
+           rtc_irq_data &= ~0xff;
+           rtc_irq_data |= (CMOS_READ(RTC_INTR_FLAGS) & 0xF0);
+       
+           if (rtc_status & RTC_TIMER_ON) {
+               mod_timer(&rtc_irq_timer, jiffies + HZ/rtc_freq + 2*HZ/100);
+           }
+       
+           spin_unlock(&rtc_lock);
+       
+           spin_lock(&rtc_task_lock);
+           if (rtc_callback) {
+               rtc_callback->func(rtc_callback->private_data);
+           }
+           spin_unlock(&rtc_task_lock);
+           wake_up_interruptible(&rtc_wait);
+       
+           kill_fasync(&rtc_async_queue, SIGIO, POLL_IN);
+           return IRQ_HANDLED;
+       }
+     #+end_src
+   + 首先为了保护数据,所有的地方都用了自旋锁.
+   + rtc_irq_data每次都有所改变,也反应了RTC的状态.
+   + 如果RTC TIMER被设置了的话,那就调用mod_timer来设置
+   + 每次interrupt都调用一下callback function
+** Interrupt Context
+   + 前面讲到过, user mode 因为要调用syscalls而让kernel代理其作用的时候,是在
+     process context(进程上下文,意思就是不管现在在哪里其实还是为process的控制
+     范围), 而我们执行中断的时候,是kernel代替中断在执行就叫interrupt context了
+   + 中断上下文,就跟某个具体的进程没关系了(跟设备有关系).current宏没作用.既然和
+     进程都没关系了,调度也就无从谈起, 在interrupt context就只剩下一条路走到黑
+     不能sleep了.这样所有跟sleep相关的函数都必须不能跟interrupt handler有关联
+     了.
+   + 因为打断了其他的进程,而且自己又不能sleep, 所以interrupt handler那就必须
+     快速而简洁.太繁琐的工作在bottom half进行操作.
+   + 历史上的interrupt没有自己的stack,而是当前的process(虽然和他没关系)用什么
+     stack, 那它就用哪个stack. 后来随着Linux把stack从8KB减小到4KB(为了防止
+     碎片), interrupt handler函数得到了自己的stack. interrupt stack.
+** Implementing Interrupt Handlers     
      
      
 
