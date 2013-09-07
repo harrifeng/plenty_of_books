@@ -771,12 +771,6 @@
    + 历史上的interrupt没有自己的stack,而是当前的process(虽然和他没关系)用什么
      stack, 那它就用哪个stack. 后来随着Linux把stack从8KB减小到4KB(为了防止
      碎片), interrupt handler函数得到了自己的stack. interrupt stack.
-** Implementing Interrupt Handlers     
-     
-     
-
-      
-      
 * Chapter 8 Bottom Halves and Deferring Work
 ** Bottom Halves
    + 理想情况下, 最好是Top Halves什么也不做,全由Bottom Halves来做, 但实际情况是
