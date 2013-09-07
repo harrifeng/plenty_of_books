@@ -661,3 +661,42 @@
 
       
       
+* Chapter 8 Bottom Halves and Deferring Work
+** Bottom Halves
+   + 理想情况下, 最好是Top Halves什么也不做,全由Bottom Halves来做, 但实际情况是
+     有些事情不得不让Top Halves来做,比如:
+     - 跟硬件确认,我已经收到了interrupt
+     - 在硬件和内存间拷贝数据
+   + 区别哪些工作在Top,哪些在Bottom是一件不太容易的事情,但是Top的紧急性是显而易
+     见的, 因为interrupt handler运行的时候,至少当前的interrupt line是全线disable
+     的.(很多interrupt会公用一个interrupt line的), 下面有些准则:
+     - 如果工作对时间要求很敏感,那么就再interrupt handler里面运行
+     - 如果工作和硬件相关,在interrupt handler运行
+     - 如果要保证某个interrupt不被其他interrupt所打断,要再interrupt handler运行
+     - 其他所有的,在bottom halves运行
+   + Bottom halves会在"以后"运行,这个"以后"相当的宽泛,也就是说cpu不那么忙,而且
+     interrupt已经enable的时候(如果还disable,那和前面就没有区别了).通常情况下,bottom
+     halves会紧紧跟随interrupt handler之后运行,只不过,所有的interrupt 都enable了.
+   + 一直以来,出现过多种bottom实现方式,主要是实现越来越复杂,灵活性和系统的效率也
+     都得到了提高
+     #+begin_example
+            .+----------------------------------------------------------------+
+             |                                                                |
+             |   Bottom Half                            Status                |
+             +----------------------------------------------------------------+
+             |                                                                |
+             |   BH                                     Removed in 2.5        |
+             +----------------------------------------------------------------+
+             |                                                                |
+             |   Task queues                            Removed int 2.5       |
+             +----------------------------------------------------------------+
+             |                                                                |
+             |   Softirq                                Available since 2.3   |
+             +----------------------------------------------------------------+
+             |                                                                |
+             |   Tasklet                                Available since 2.3   |
+             +----------------------------------------------------------------+
+             |                                                                |
+             |   Work queues                            Available since 2.5   |
+             +----------------------------------------------------------------+
+     #+end_example
