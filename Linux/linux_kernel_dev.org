@@ -448,35 +448,34 @@
         while (!buf->full) {
             wait(&buf->cond, &buf->lock);
         }
-
+        
         /* In any other thread; */
         if (buf->n >= buf->size) {
             buf->full = 1;
             signal(&buf->cond);
         }
-      #+end_src
-    + 下面就是运行和睡眠状态的转换情况情况总结
-      #+begin_example
-           __add_wait_queue() adds task to a wait queue, sets the task's
-           state to TASK_INTERRUPTIBLE, and calls schedule(). schedule()
-           calls deactivate_task() which removes the task from the runqueue
-           +---------------------------------------------------+
-		   |												   |
-		   |												   |
-		   |												   |
-		   |												  \|/
-		+--+-----------+								  +----.------------+
-		|			   | and task executes signal handler |					|
-		| TASK_RUNNING |<--------------------------------->TASK_INTERRUPTIBLE
-		|			   |								  |					|
-		+--.-----------+								  +----+------------+
-		  /|\												   |
-		   +---------------------------------------------------+
-            Event the task is waiting for occurs, and try_to_wake_up()
-            sets the task to TASK_RUNNING, calls activate_task() to
-            add the task to a runqueue, and calls schedule().
-            __remove_wait_queue() removes the task from the wait queue.
-      #+end_example
+     #+end_src
+  + 下面就是运行和睡眠状态的转换情况情况总结
+    #+begin_example
+         state to TASK_INTERRUPTIBLE, and calls schedule(). schedule()
+         calls deactivate_task() which removes the task from the runqueue
+         +---------------------------------------------------+
+         |                                                   |
+         |                                                   |
+         |                                                   |
+         |                                                  \|/
+      +--+-----------+                                  +----.------------+
+      |              | and task executes signal handler |                 |
+      | TASK_RUNNING |<--------------------------------->TASK_INTERRUPTIBLE
+      |              |                                  |                 |
+      +--.-----------+                                  +----+------------+
+        /|\                                                  |
+         +---------------------------------------------------+
+          Event the task is waiting for occurs, and try_to_wake_up()
+          sets the task to TASK_RUNNING, calls activate_task() to
+          add the task to a runqueue, and calls schedule().
+          __remove_wait_queue() removes the task from the wait queue.    
+    #+end_example
 *** Preemption and Context Switching
     + schedule()==>context_switch()进行上下文切换:
       - 调用switch_mm(), 切换新老task的virtual memory mapping
