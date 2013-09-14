@@ -16,6 +16,19 @@
      都可以随意变道(四车道三车道都用来开一个方向),线路有时候会非常繁忙.
    + 统计复用的这些缺点,可以用分时复用或者静态复用来改变,但是分时或者静态复用就意味着
      线路的利用率不够高(高速公路总是两个方向各两条,但很多时候只有一个方向繁忙)
+   + 能够继承circuits并且不依靠物理连接的virtual circuits [X.25]在1990年之前非常
+     流行,后来被DSL(digital subscriber line)所替代.
+   + 在virtual circuits之前,每个路由器都需要保留每一个connection的信息.因为每个packet
+     的状态信息非常之少. 这种特质要求在真正传递数据之前,在数据经过的路上,所有的路由器都已经
+     做好准备了,而且在数据传输完成之后的清理工作也要做.(都是通过复杂的signal 协议完成的) 
+     这就是原来的connection-oriented 网络.
+   + 在virtual circuits之前,不管是不是真实的circuits, 它们都是connection-oriented
+     的. connection-oriented和connectionless-oriented是网络发展的两个阶段.后面
+     我们会看到TCP就是connectionless的网络啦.
+   + 后来,packet的模式得到了改变,把源头和目的地都写进了每一个的packet,就叫做datagram了,
+     新的packet的组织方式势必会增加每个packet的负担,但是每个路由器里面的connection的信息
+     就不用保存了.前面为了提前建立这些个信息的signaling复杂协议就不需要了. 这也就是我们现在
+     看到的connectionless协议啦!
    + 有些情况下,网络上的数据传输会出现错误,这个时候就要考虑错误处理了.通常情况下,
      如果错误的bit不多,那么校验就可以改正他们.否则就只有重传了.
      
