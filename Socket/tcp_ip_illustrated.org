@@ -165,3 +165,11 @@
       但是不太容易被人所识别. 在TCP/IP的世界里面, DNS就是用来映射一个机器名和
       IP地址的方法.
     + DNS还是一个分布式的数据库, 而且是一个应用层的协议,它需要其他层的支持.
+** Internets, Instranets, and Extranets
+   + 小写的internet就是表示几个电脑连接起来
+   + 首字符大写的Internet表示全世界连接起来的主机
+   + intranet(内网)是一个团体内部使用的网络,在英特网上可以通过VPN(virtual 
+     private network)来连接一个特定的内网
+   + 如果企业的内网需要相互给特定的一部分人开放(比如供应商,客户),那么就构成了
+     一个叫做extrant(外联网), 如果Internet是public的,intranet是private的,
+     那么extrant就是半public半private的.
