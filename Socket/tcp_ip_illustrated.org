@@ -104,4 +104,64 @@
       通信, 而网络层往下, 使用的是hop-by-hop的协议:通信两端直接要经过若干次跳跃.
     + 路由器,从定义上来讲,就是有两个或者两个以上的网络端口的网络设备. 如果一个host
       有两个端口,他也可以成为路由器(但是要保证把一个端口的数据,发送到另外一个端口)
-       
+** The Architecture and Protocols of the TCP/IP Suite
+*** The ARPANET Reference Model
+  + 下面我们看看ARPANET的分层.这个分层和传统的经典分层有些出入,是真正的TCP/IP
+    协议簇采用的分层方法:
+    #+begin_example
+        NO.       Name                  Description/Example       
+       +----+  +-----------+  +--------------------------------------------------+        
+       | 7  |  |Application|  | Virtually any Internet-compatible application,   |
+       |    |  |           |  | Including the HTTP, DNS, DHCP                    |
+       +----+  +-----------+  +--------------------------------------------------+
+       +----+  +-----------+  +--------------------------------------------------+
+       | 4  |  |Transport  |  | Provides exchange of data between abstract "port"|
+       |    |  |           |  | Including TCP, UDP, SCTP, DCCP                   |
+       +----+  +-----------+  +--------------------------------------------------+
+       +----+  +-----------+  +--------------------------------------------------+                        
+       |3.5 |  | Network   |  | Unofficial "layer" that helps accomplish setup   |                        
+       |    |  |(Adjunct)  |  | and manage. Including ICMP,IGMP                  |
+       +----+  +-----------+  +--------------------------------------------------+                        
+       +----+  +-----------+  +--------------------------------------------------+                        
+       | 3  |  | Network   |  | Defines abstract datagrams and provide routing   |                        
+       |    |  |           |  | Including IP, IPv6                               |                        
+       +----+  +-----------+  +--------------------------------------------------+                        
+       +----+  +-----------+  +--------------------------------------------------+                        
+       |2.5 |  | Link      |  | Unofficial "layer" used to map network address to|                        
+       |    |  |(Adjunct)  |  | link-layer address. Including ARP                |                        
+       +----+  +-----------+  +--------------------------------------------------+                        
+    #+end_example
+*** Multiplexing, Demultiplexing, and Encapsulation in TCP/IP
+    + 前面说过每一层往下传递的时候,都会加上一定的身份信息来表明自己从什么协议来.
+      在TCP中具体的例子就是:一个从网络层进入数据链路层的Ethernet Frame包含了
+      一个48bit的目的地址,同时还有一个16bit的Ethernet Type. 如果数值是0x0800
+      那么说明里面包裹的是IPv4的datagram, 如果是0x0806表明上层协议就是ARP.
+    + 假设通过判断Ethernet Type我们发现收到的是IP 协议的信息, 然后Ethernet 
+      header和trailer信息就被去掉了, 剩下的信息就交给本机的IP协议去处理
+    + IP协议就会检查IP datagram的目的IP, 如果自己的多个IP中有一个是它的话,那
+      说明是发给自己的(如果没有的话,再转发).然后就会检查 8bit的 IPv4 Protocol
+      Field, 来判断其上层是什么协议.常见的结果有ICMP(1), IGMP(2), IPv6(4), 
+      TCP(6), UPD(17)
+    + 确定自己的数据完好,然后知道上层是什么协议以后,就把数据(可能需要重新排列
+      多个fragment)上传给上层
+    + 更高层的协议,比如TCP UDP一般就是靠端口来判断服务了
+*** Port Numbers
+    + Port Number是一个16bit的数字(0-65535),并没有具体的物理对应, 每一个IP
+      地址都有65535个抽象的端口,每一个端口可以对应一个运输层的应用. 端口有点像
+      分机的作用.
+    + 端口分配分了三种:
+      - 0-1023 : 熟知端口, 需要root权限
+      - 1024-49151: 注册端口
+      - 49152-65535: 私有端口
+    + 常用服务都有一个熟知端口, 如果你细心会发现TCP/IP 服务都是奇数, 这是因为
+      原来依靠的NCP协议不是全双工的,所以就需要两个端口. TCP/IP最后使用了奇数
+      - SSH : 22
+      - FTP : 20 and 21
+      - Telnet : 23
+      - SMTP : 25
+      - DNS : 53
+*** Names, Address, and the DNS
+    + 在TCP/IP框架下, 每个链路层网口都要有一个IP地址. IP地址可以完全代表主机,
+      但是不太容易被人所识别. 在TCP/IP的世界里面, DNS就是用来映射一个机器名和
+      IP地址的方法.
+    + DNS还是一个分布式的数据库, 而且是一个应用层的协议,它需要其他层的支持.
