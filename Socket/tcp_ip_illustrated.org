@@ -173,3 +173,45 @@
    + 如果企业的内网需要相互给特定的一部分人开放(比如供应商,客户),那么就构成了
      一个叫做extrant(外联网), 如果Internet是public的,intranet是private的,
      那么extrant就是半public半private的.
+** Designing Applications
+   + 我们前面讨论的,只是简单的把数据从一个host传递到另外一个host, 我们要依靠
+     一些经典的设计模式来完成实际的工作
+*** Client/Server
+    + 网络中应用的最常见的设计模式就是C/S:
+      - 循环服务器: 每次只处理一个client请求
+      - 并发服务器: 每次fork一个子程序处理一个client请求.
+*** Peer-to-Peer
+    + P2P是一种在更广泛的网络上采用的, 每一个host都同时既是客户端,又是服务器端
+    + 一个正在运行的p2p应用程序会接受一些请求,如果它能够回应这些请求当然就回应了
+      (通常是发送数据给其他host), 如果它不能回应这些请求, 那么就要把这些请求转
+      给其他host.
+    + p2p网络的最大难点在于查找其他host, 如果一个host不能满足接受的请求,它发送
+      给其他host的时候,他怎么知道发送给谁.
+*** Application Programming Interfaces (APIs)
+    + 不管是CS还是P2P, 都需要操作系统支持的API. 最流行的就是Berkeley socket
+** Standardization Process
+*** Request for Comments(RFC)
+    + 互联网正式的标准都会发布成RFC
+    + 不是所有的RFC都是标准, 只有叫做standards-track类的RFC才是标准
+** Implementations and Software Distribution
+   + 事实上的TCP标准实现来自伯克利大学的CSRG(Computer Systems Research Group)
+   + 到90年代中期, 所有重要的操作系统都已经原生的支持TCP/IP了
+** Attacks Involing the Internet Architecture
+   + 黑客们都是TCP/IP的高手,他们根据TCP/IP协议的特点,设计出很多攻击互联网主机的方式:
+     - 比如可以通过更改IP datagram的 源地址IP, 来达到欺骗的目的,这个叫做电子欺骗(spoofing),
+       这样一来就很难判断出一个IP datagram真正来自哪里
+     - 电子欺骗还可以和其他技术结合, 比如发送超大量的IP datagram给一个server, 使得
+       这个server疲于应付海量无用请求,根本没法做正经工作,这就叫做DoS(Denial-of-service)
+       攻击
+     - DoS攻击采取的是一对一的方式, 一个host冲击一个server, 很显然,如果host的想耗尽
+       server的资源,自己本身得配置比对方好.现在硬件发展迅速, server的配置增长很快, 
+       传统的DoS攻击很快遇到了问题: 如何提高成倍提高攻击力. 这时候分布式Dos攻击(DDoS, 
+       Distributed Dos)应运而生, 其实就是控制一定数量的傀儡(肉鸡)同时对某个server
+       发送海量的IP datagram,以期耗尽对方的资源
+     - 防止限制性资源攻击, 是利用协议或者操作系统的漏洞获取对方系统(server)的控制,从而
+       访问server上的内容
+     - 另外一个值得关注的问题是最初网络协议的设计没有考虑到加密,所以网络上面的内容都是
+       明文传送的.这就需要更加严密的协议来提高安全性
+
+       
+   
