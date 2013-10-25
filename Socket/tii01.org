@@ -21,7 +21,7 @@
       流行,后来被DSL(digital subscriber line)所替代.
     + 在virtual circuits之前,每个路由器都需要保留每一个connection的信息.因为每个packet
       的状态信息非常之少. 这种特质要求在真正传递数据之前,在数据经过的路上,所有的路由器都已经
-      做好准备了,而且在数据传输完成之后的清理工作也要做.(都是通过复杂的signal 协议完成的) 
+      做好准备了,而且在数据传输完成之后的清理工作也要做.(都是通过复杂的signal 协议完成的)
       这就是原来的connection-oriented 网络.
     + 在virtual circuits之前,不管是不是真实的circuits, 它们都是connection-oriented
       的. connection-oriented和connectionless-oriented是网络发展的两个阶段.后面
@@ -44,7 +44,7 @@
     + 边缘论的采用让TCP/IP的设计变成了"傻瓜的网络"(这个网络应该是指的传输中的线路
       包括路由器等)和"智能的系统", 所有的重要函数(错误处理,加密,传输确认)都是在
       end端,也就是应用所在的地方完成的
-    + 以边缘论为理论依据,在选择函数在哪里实现这个问题上,又引入了叫做命运共享(Fate 
+    + 以边缘论为理论依据,在选择函数在哪里实现这个问题上,又引入了叫做命运共享(Fate
       sharing)的理论.也就是"一荣俱荣,一损俱损":只有能够破坏一个或者多个end point
       的错误,才能说是破坏了整个通信
     + 命运共享的理论让TCP实现的Virtual connection能够在网络出错了一段时间的情况
@@ -94,7 +94,7 @@
     + 下一层接到来自上一层的数据的时候,只能进行封装,不能看里面的内容,这是封装的重要
       特性:任何层对来自上一层的数据都是无法理解的,不透明的.
     + 层次结构的另外一个特点就是在通信中设计的网络设备,并不是每个设备都要实现所有的
-      的层次:比如: 
+      的层次:比如:
       1) 终端机要实现所有的5层,
       2) 交换机(switch)实现物理层和数据链路层
       3) 路由器(Router)实现物理层,数据链路层和网络层
@@ -109,8 +109,8 @@
   + 下面我们看看ARPANET的分层.这个分层和传统的经典分层有些出入,是真正的TCP/IP
     协议簇采用的分层方法:
     #+begin_example
-        NO.       Name                  Description/Example       
-       +----+  +-----------+  +--------------------------------------------------+        
+        NO.       Name                  Description/Example
+       +----+  +-----------+  +--------------------------------------------------+
        | 7  |  |Application|  | Virtually any Internet-compatible application,   |
        |    |  |           |  | Including the HTTP, DNS, DHCP                    |
        +----+  +-----------+  +--------------------------------------------------+
@@ -118,29 +118,29 @@
        | 4  |  |Transport  |  | Provides exchange of data between abstract "port"|
        |    |  |           |  | Including TCP, UDP, SCTP, DCCP                   |
        +----+  +-----------+  +--------------------------------------------------+
-       +----+  +-----------+  +--------------------------------------------------+                        
-       |3.5 |  | Network   |  | Unofficial "layer" that helps accomplish setup   |                        
+       +----+  +-----------+  +--------------------------------------------------+
+       |3.5 |  | Network   |  | Unofficial "layer" that helps accomplish setup   |
        |    |  |(Adjunct)  |  | and manage. Including ICMP,IGMP                  |
-       +----+  +-----------+  +--------------------------------------------------+                        
-       +----+  +-----------+  +--------------------------------------------------+                        
-       | 3  |  | Network   |  | Defines abstract datagrams and provide routing   |                        
-       |    |  |           |  | Including IP, IPv6                               |                        
-       +----+  +-----------+  +--------------------------------------------------+                        
-       +----+  +-----------+  +--------------------------------------------------+                        
-       |2.5 |  | Link      |  | Unofficial "layer" used to map network address to|                        
-       |    |  |(Adjunct)  |  | link-layer address. Including ARP                |                        
-       +----+  +-----------+  +--------------------------------------------------+                        
+       +----+  +-----------+  +--------------------------------------------------+
+       +----+  +-----------+  +--------------------------------------------------+
+       | 3  |  | Network   |  | Defines abstract datagrams and provide routing   |
+       |    |  |           |  | Including IP, IPv6                               |
+       +----+  +-----------+  +--------------------------------------------------+
+       +----+  +-----------+  +--------------------------------------------------+
+       |2.5 |  | Link      |  | Unofficial "layer" used to map network address to|
+       |    |  |(Adjunct)  |  | link-layer address. Including ARP                |
+       +----+  +-----------+  +--------------------------------------------------+
     #+end_example
 *** Multiplexing, Demultiplexing, and Encapsulation in TCP/IP
     + 前面说过每一层往下传递的时候,都会加上一定的身份信息来表明自己从什么协议来.
       在TCP中具体的例子就是:一个从网络层进入数据链路层的Ethernet Frame包含了
       一个48bit的目的地址,同时还有一个16bit的Ethernet Type. 如果数值是0x0800
       那么说明里面包裹的是IPv4的datagram, 如果是0x0806表明上层协议就是ARP.
-    + 假设通过判断Ethernet Type我们发现收到的是IP 协议的信息, 然后Ethernet 
+    + 假设通过判断Ethernet Type我们发现收到的是IP 协议的信息, 然后Ethernet
       header和trailer信息就被去掉了, 剩下的信息就交给本机的IP协议去处理
     + IP协议就会检查IP datagram的目的IP, 如果自己的多个IP中有一个是它的话,那
       说明是发给自己的(如果没有的话,再转发).然后就会检查 8bit的 IPv4 Protocol
-      Field, 来判断其上层是什么协议.常见的结果有ICMP(1), IGMP(2), IPv6(4), 
+      Field, 来判断其上层是什么协议.常见的结果有ICMP(1), IGMP(2), IPv6(4),
       TCP(6), UPD(17)
     + 确定自己的数据完好,然后知道上层是什么协议以后,就把数据(可能需要重新排列
       多个fragment)上传给上层
@@ -168,7 +168,7 @@
 ** Internets, Instranets, and Extranets
    + 小写的internet就是表示几个电脑连接起来
    + 首字符大写的Internet表示全世界连接起来的主机
-   + intranet(内网)是一个团体内部使用的网络,在英特网上可以通过VPN(virtual 
+   + intranet(内网)是一个团体内部使用的网络,在英特网上可以通过VPN(virtual
      private network)来连接一个特定的内网
    + 如果企业的内网需要相互给特定的一部分人开放(比如供应商,客户),那么就构成了
      一个叫做extrant(外联网), 如果Internet是public的,intranet是private的,
@@ -204,14 +204,11 @@
        这个server疲于应付海量无用请求,根本没法做正经工作,这就叫做DoS(Denial-of-service)
        攻击
      - DoS攻击采取的是一对一的方式, 一个host冲击一个server, 很显然,如果host的想耗尽
-       server的资源,自己本身得配置比对方好.现在硬件发展迅速, server的配置增长很快, 
-       传统的DoS攻击很快遇到了问题: 如何提高成倍提高攻击力. 这时候分布式Dos攻击(DDoS, 
+       server的资源,自己本身得配置比对方好.现在硬件发展迅速, server的配置增长很快,
+       传统的DoS攻击很快遇到了问题: 如何提高成倍提高攻击力. 这时候分布式Dos攻击(DDoS,
        Distributed Dos)应运而生, 其实就是控制一定数量的傀儡(肉鸡)同时对某个server
        发送海量的IP datagram,以期耗尽对方的资源
      - 防止限制性资源攻击, 是利用协议或者操作系统的漏洞获取对方系统(server)的控制,从而
        访问server上的内容
      - 另外一个值得关注的问题是最初网络协议的设计没有考虑到加密,所以网络上面的内容都是
        明文传送的.这就需要更加严密的协议来提高安全性
-
-       
-   
