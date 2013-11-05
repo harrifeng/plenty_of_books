@@ -129,3 +129,30 @@
     + 所有network/subnet 地址不变,然后把所有的host地址设置为1,就是所谓的广播地址了.
     + 从理论上来说,所有的广播地址的datagram都会被发送到相应的子网, 然后在子网内发送给自己所有
       的host.但是实际上因为在安全性上的设计缺陷, 广播地址如今都是被直接disable的
+*** IPv6 Addresses and Interface Identifiers
+    + IPv6不仅仅是大了四倍，相比于IPv4, 它还是有一些新的结构的, 比如scope:
+      - node-local地址 :只能本机通信使用
+      - link-local地址 :有共同IPv6 前缀的机器间使用
+      - global地址:整个英特网都能使用的
+    + Link-local的通信会要求生成一个角度interface identifiers(IID)的东西, 国际标准是一个
+      64bit数(EUI-64), 通过随机或者MAC地址产生.
+    + 看一个Linux上的IPv6的例子:
+      #+begin_src sh
+        Linux% ifconfig eth1
+        eth1 Link encap:Ethernet HWaddr 00:30:48:2A:19:89
+                  inet addr:12.46.129.28  Bcast:12.46.129.127
+                  Mask:255.255.255.128
+                  inet6 addr: fe80::230:48ff:fe2a:1989/64 Scope:Link
+                  UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+                  RX packets:1359970341 errors:0 dropped:0 overruns:0 frame:0
+                  TX packets:1472870787 errors:0 dropped:0 overruns:0 carrier:0
+                  collisions:0 txqueuelen:1000
+                  RX bytes:4021555658 (3.7 GiB)  TX bytes:3258456176 (3.0 GiB)
+                  Base address:0x3040 Memory:f8220000-f8240000
+      #+end_src
+    + 物理地址为00:30:48:2A:19:89, 第二位被反置就成了02:30:48:2A:19:89, 然后加上link-local
+      地址的保留前缀(fe80::/10), 那么就是fe80::230:48ff:fe2a:1989, 也就是完整的IPv6地址啦.
+** Unicast Address Assignment
+*** Single Provider/No Network/Single Address
+    + 一般来说，上网的方式是从ISP那里得到一个IP地址， 比如63.204.134.177, 同时每个机器的
+      环回地址127.0.0.1也是可以工作的。还有multicast 地址224.0.0.1
