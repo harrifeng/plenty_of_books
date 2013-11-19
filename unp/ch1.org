@@ -1,0 +1,25 @@
+* Chapter 1: Introduction
+** Introduction
+   + Web server是长期运行的程序, 而Web client(比如浏览器)就是发出请求的程序.
+   + 一般来说,都是client端发送请求, 也有异步回调(asynchronous callback)通信,是
+     server端先发起的.
+** A Simple Daytime Client
+   + 下面是一个简单的请求时间和日期的client
+     #+begin_src c
+       /*************************/
+       /* intro/daytimetcpcli.c */
+       /*************************/
+       #include "unp.h"
+       
+       int main(int argc, char *argv[])
+       {
+           int         sockfd, n;
+           char        recvline[MAXLINE + 1];
+           struct      sockaddr_in servaddr;
+       
+           if (argc != 2) {
+               err_quit("usage: a.out <IPaddress>");
+           }
+           return 0;
+       }
+     #+end_src
