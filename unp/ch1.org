@@ -7,19 +7,68 @@
    + 下面是一个简单的请求时间和日期的client
      #+begin_src c
        /*************************/
-       /* intro/daytimetcpcli.c */
+       /* intro/daytimectpcli.c */
        /*************************/
-       #include "unp.h"
+       
+       include "unp.h"
        
        int main(int argc, char *argv[])
        {
-           int         sockfd, n;
-           char        recvline[MAXLINE + 1];
-           struct      sockaddr_in servaddr;
+           int                 sockfd;
+           int                 n;
+           char                recvline[MAXLINE + 1];
+           struct sockadr_in   servaddr;
        
            if (argc != 2) {
                err_quit("usage: a.out <IPaddress>");
            }
+       
+           if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+               err_sys("socket error");
+           }
+       
+           bzero(&servaddr, sizeof(servaddr));
+           servaddr.sin_family = AF_INET;
+           servaddr.sin_port = htons(13);    /* daytime server port */
+           if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0) {
+               err_quit("inet_pton error for %s", argv[1]);
+           }
+           /**********************************************/
+           /* in unp.h, #define SA to be struct sockaddr */
+           /**********************************************/
+           if (connect(sockfd, (SA *) &servaddr, sizeof(servaddr)) < 0) {
+               err_sys("connect error");
+           }
+       
+           while ((n = read(sockfd, recvline, MAXLINE)) > 0) {
+               recvline[n] = 0;
+               if (fputs(recvline, stdout) == EOF) {
+                   err_sys("fputs error");
+               }
+           }
+           if (n < 0) {
+               err_sys("read error");
+           }
            return 0;
        }
      #+end_src
+   + 使用方法:
+     #+begin_src sh
+       ~/test/unpbook/intro$ ./daytimetcpcli 127.0.0.1
+       Wed Nov 20 14:33:08 2013   
+     #+end_src
+   + socket 函数创建一个socket, 其返回参数为sockfd, 其参数为AF_INET表示为IPv4, 
+     SOCK_STREAM表示为TCP socket
+   + 后面我们就创建一个socket的数据结构(类型为struct sockadr_in), 我们使用bzero
+     这个函数把整个数据结构全部清零.
+   + servaddr(类型为struct sockadr_in)是整个函数的重点, 在用bzero清零以后,后面
+     是给他的每个部分赋值的过程 
+     1) sin_family
+     2) sin_port
+     3) 使用inet_pton函数把一个AF_INET类型ip地址, 转换成合适的格式,然后赋值给sin_addr
+   + connect函数通过第二个参数来知道要连接哪个地址(第三个长度起辅助作用),然后把server
+     返回的结果都返回给第一个参数
+   + 通过read函数来读取connect带来的结果. daytime server的返回值都是26个bytes,
+     但是根据网络情况的不同,这些bytes可能通过不同数量的TCP segment返回., 所以我们得
+     用while来接收.然后把recvline最后一个赋值成0 (因为TCP里面的字符串不是c语言字符串,
+     没有以NULL结尾)
