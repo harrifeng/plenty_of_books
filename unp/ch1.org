@@ -73,3 +73,48 @@
      但是根据网络情况的不同,这些bytes可能通过不同数量的TCP segment返回., 所以我们得
      用while来接收.然后把recvline最后一个赋值成0 (因为TCP里面的字符串不是c语言字符串,
      没有以NULL结尾)
+** Protocol Independence
+   + 我们上面的例子使用的是IPV4的IP地址, 如果使用IPV6的IP地址,那么就用sockaddr_in6
+     替换上面例子的sockaddr_in
+   + 同时AF_INET ==> AF_INET6
+   + sin_family ==> sin6_port
+   + sin_port ==> sin6_port
+   + sin_addr ==> sin6_addr
+** Error Handling: Wrapper Function
+   + 老是测试返回值是不是0,太麻烦了,所以设计了wrapper function,特点是另外设计一些函数
+     首字母大写,里面测试返回值是不是0, 我们以socket函数为例.
+     #+begin_src c
+       sockfd = socket(AF_INET, SOCK_STREAM, 0);
+       int Socket(int family, int type, int protocol) {
+           int n;
+           if ((n = socket(family, type, protocol)) < 0) {
+               err_sys("socket error");
+           }
+           return (n);
+       }
+     #+end_src
+   + 在Unix函数里面如果出现了错误, 那么一个全局变量errno就会被设置成一个正数, 同时函数返回
+     负数-1. 我们的err_sys函数就是通过查看errno,并且打印error错误
+** A Simple Daytime Server
+   + 我们再来看看server端如何写:
+     #+begin_src c
+       /**************************/
+       /* intro/daytimetcpsrv.c  */
+       /**************************/
+       #include "unp.h"
+       #include <time.h>
+       
+       int main(int argc, char *argv[])
+       {
+           int       listenfd;
+           int       connfd;
+           char      buff[MAXLINE];
+           time_t    ticks;
+       
+           listenfd = Socket(AF_INET, SOCK_STREAM, 0);
+       
+           bzeros(&servaddr, sizeof(servaddr));
+           
+           return 0;
+       }
+     #+end_src
