@@ -151,3 +151,9 @@
      accept函数的返回值是一个新的descriptor,叫做connected descriptor. server会同时
      接受多个client的请求,server会给每个client一个connected descriptor
    + 时间经过字符串处理以后,通过Write发送给connfd
+** Roadmap to Client/Server Examples in the Text
+** OSI Model
+** BSD Networking History
+** Test Networks and Hosts
+** Unix Standards
+** 64-Bit Architectures   
