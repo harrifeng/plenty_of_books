@@ -1,3 +1,4 @@
+#+OPTIONS:^:{}
 * Chapter 1: Introduction
 ** Introduction
    + Web server是长期运行的程序, 而Web client(比如浏览器)就是发出请求的程序.
