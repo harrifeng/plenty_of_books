@@ -114,7 +114,40 @@
            listenfd = Socket(AF_INET, SOCK_STREAM, 0);
        
            bzeros(&servaddr, sizeof(servaddr));
-           
+           servaddr.sin_family = AF_INET;
+           servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+           servaddr.sin_port = htons(13); /* daytime server port */
+       
+           Bind(listenfd, (SA*) &servaddr, siezeof(servaddr));
+           /**********************************************************/
+           /* LISTENQ is from unp.h, it specifies the maximum number */
+           /* of client connections that kernel will queue for this  */
+           /* listening descriptor                                   */
+           /**********************************************************/
+           Listen(listenfd, LISTENQ);
+       
+           for ( ; ;) {
+               connfd = Accept(listenfd, (SA*)NULL, NULL);
+       
+               ticks = time(NULL);
+               snprintf(buff, sizeof(buff), "%.24s\n\n", ctime(&ticks));
+               Write(connfd, buff, strlen(buff));
+               Close(connfd);
+           }
            return 0;
        }
      #+end_src
+   + Socket函数首先建立一个socket
+   + bzeros初始化socket的数据结构servaddr, 然后给各部分赋值, 和client程序一样, 
+     sin_family和sin_port被赋了AF_INET和htons(13)
+   + 而sin_addr.s_addr在client是仅仅赋值了目标server的值(通过a.out的第二个参数得到),
+     这里却赋值INADDR_ANY, 这是为了让server接受来自本机任意一个网卡的数据(因为一个host
+     可能有多个网卡)
+   + client的socket数据结构赋值完之后,就是connect,然后read, server的操作要多一点
+   + server端和client的connect相似的命令是bind: 都是把socket和socket数据结构联系
+     起来
+   + bind之后,就用listen函数,就把一个socket变成了listening socket
+   + TCP使用的是三次握手协议来建立连接, accept函数返回的时候,就是三次握手成功完成的时候,
+     accept函数的返回值是一个新的descriptor,叫做connected descriptor. server会同时
+     接受多个client的请求,server会给每个client一个connected descriptor
+   + 时间经过字符串处理以后,通过Write发送给connfd
