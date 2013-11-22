@@ -1,0 +1,34 @@
+#+OPTIONS:^:{}
+* Chapter 2: The Transport Layer: TCP, UPD, and SCTP
+** Introduction
+** The Big Picture
+   + tcpdump: 是一个直接与datalink沟通的工具, Linux下面其实还有一种socket与
+     datalink练习的socket,叫做SOCK_PACKET
+   + traceroute: 用了两个sockets: 一个是IP,另一个是ICMP
+   + SCTP: 是一个新的网络协议, 可以用IPv4或者IPv6
+   + ICMP: 处理错误和控制信息
+   + IGMP: 处理multicasting的,已经不怎么用了
+   + ARP: IP地址-->MAC地址
+   + RARP: MAC地址-->IP地址
+   + ICMPv6: 是IPv6里面全面替代ICMPv4, IGMP, 以及ARP
+** User Datagram Protocol (UDP)
+   + UDP是网络层协议, 不能保证传输的成功,因为它没有保证传输可靠性的方法, 需要
+     应用层来保证
+   + TCP是一个byte-stream的协议,没有任何边界的概念, 但是UDP有,每个UDP都有长度,
+     都会最后传输给对方
+   + UDP比较自由,不要维护relation, 它可以发送一个socket给serverA, 然后马上发送
+     同一个socket给serverB.
+** Transmission Control Protocol (TCP)
+   + TCP提供了传输的可靠性: 并不是说用TCP一定能把数据传输给对方, 而是如果能传输数据
+     就传输,如果传输不成功,也能报错.
+   + TCP还有自己的算法来计算RTT(round-trip time) : 也就是client和server之间的
+     传输一次的时间.
+   + RTT这个时间是根据当前网络状况和距离而设定的, 并且是不停计算的
+   + TCP还会记录序列, 发送的时候可能序列是123, 到达的时候就乱了.接收方的TCP 会把所有
+     的TCP segment重新排列(如果有收到重传的segment,也会智能丢弃).
+   + TCP还提供流量控制: TCP一直告诉对方自己能够接受多少的数据,这叫advertised window.
+   + 这个windows就是接收方能够提供的最大的内存空间.这个数字是不停改变的,刚接受来肯定
+     数字变小, 处理一会肯定数字变大. 窗口数字也是可以变成0的,如果接收方处理不过来,当然
+     要停止你的传输
+   + TCP是全双工的,也就是说,传输是双方向的,并不是叫server就不接受,叫client就不发送.
+     当然某个方向的传输停止也是可以自由决定的.
