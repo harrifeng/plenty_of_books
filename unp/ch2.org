@@ -32,3 +32,35 @@
      要停止你的传输
    + TCP是全双工的,也就是说,传输是双方向的,并不是叫server就不接受,叫client就不发送.
      当然某个方向的传输停止也是可以自由决定的.
+** Stream Control Transmission Protocol (SCTP)
+   + SCTP提供了一种client和server之间的association, 之所以叫association而不是叫
+     connection是因为:因为connection是两个IP之间的联系,而SCTP是两个系统之间的联系
+     不仅仅是两个IP
+   + 在消息传递上面,SCTP更像UDP,它把每个记录的长度都传输给了对方
+   + SCTP支持两个端之间的多个stream, 其中一个stream如果丢失了一个数据的话,不会影响
+     其他stream. 这个和TCP不一样,TCP一个byte丢失就要影响以后的传输(因为要重新排序)
+   + SCTP特性还有:单个SCTP端点支持多个IP地址. TCP也可以在其他路由协议的支持下获得
+     这种特性
+** TCP Connection Establishment and Termination
+   + TCP建立连接的时候通常有如下的过程:
+     1) 服务器必须首先准备好, 通过socket, bind和listen这三个函数,我们把这三个函数的
+        过程叫:被动打开(passive open)
+     2) 客户端自然就是主动打开(active open) : 客户发送一个没有数据的SYN segment,
+        里面只有一个序列号, 就是三次握手建立以后客户端发送的第一个数据的序号(假设为J)
+     3) 服务器必须确认(ACK)序号为J的SYN, 同时发送自己在这次握手后发送的第一个数据的
+        序号(假设为K), 这个ACK和SYN都是在一个segment中发送的
+     4) 客户端要确认服务器的序号为K的SYN
+     5) 因为 2,3,4三步中要有三个segment才能完成连接的建立,所以这个过程叫做三次握手
+   + 三次握手图解
+     #+begin_example
+                      client                       server
+          socket()      |      SYN(J)                |socket(), bind(), listen()
+                        |                            |
+       connect() blocks +--------------------------->|accept() blocks
+                        |    SYN(K), ACK(J+1)      / |
+       connect() returns|<-------------------------/ |
+                        |\    ACK(K+1)               |
+                        | \------------------------->|accept() returns
+                        |                            |read() blocks
+                        |                            |
+     #+end_example
