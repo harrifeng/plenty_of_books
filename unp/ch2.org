@@ -65,81 +65,98 @@
                         |                            |read() blocks
                         |                            |
      #+end_example
-** TCP Options
-   + MSS: 在传输SYN的同时,发送自己的最大segment的大小(Maximum Segment Size)
-   + Windows scale: TCP向对方展示的最大窗口数目为65535(相应的头部只有16bit), 但是
-     现在的网络速度要远远大于这个数目, 所以需要一个新的参数Windows scale来成倍扩展
-     窗口大小. scale是0到14,表示窗口数目左移多少位最大窗口数目现在是1GB(65535*2^14)
-   + Windows scale是一个新的选项,老的TCP实现不支持,所以只有client发送了这个选项,
-     并且对方server回应了这个选项,我们才能使用. 同样的,server端只有在client发给了
-     你这个选项,你才能回应这个选择.
-   + Timestamp: 这个选项对于高速传输时可能产生的数据破坏修复(比如迟到的segment,重复的
-     segment)很有意义.
-** TCP Connection Termination
-   + 建立一个连接需要三次握手, 终止一个连接则需要四次挥手:
-     1) 某个应用(服务器端或者客户端都可以, 全双工嘛,两边都一样)首先调用close, 我们称之为
-        主动关闭(active close). 这边的TCP主动发送一个FIN segment,表示自己传完了
-     2) 接受到FIN的对端执行被动关闭(passive close), 这个FIN会被TCP确认(发送一个ACK)
-        同时还会把收到FIN的消息(在当前所有数据之后,加上EOF的方式)传送给上层应用程序
-     3) 过了一段时间以后,刚才接受FIN的端,也没有啥东西可传了,就会发送自己的FIN给对方
-     4) 对方TCP接受到这个最后的FIN之后,也会发送一个ACK给对方确认的.
-   + 四次挥手只是"最多四次", 有些情况下用不了四次:
-     - 上面的1FIN可能随着数据一块发过去
-     - 上面的2ACK,3FIN可能会在一个segment发过来
-     - 上面2和3之间, 被动关闭的那一端还是可以传数据给主动关闭那一端的,只是反过来不行了,
-       这个叫做半关闭(half close)
-   + TCP四次挥手图解(close()可以释放FIN,同时exit或者非正常中断也会发送)
-     #+begin_example
-                      client                       server
-
-                        |    FIN(M)                  |
-             close()    +--------------------------->|read() return 0 (eof)
-                        |    ACK(M+1)              / |
-       connect() returns|<-------------------------/ |
-                                  ........
-
-                        |    FIN(N)                  |
-                        |<---------------------------+close()
-                        |\    ACK(N+1)               |
-                        | \------------------------->|
-                        |                            |
-                        |                            |
-
-     #+end_example
-** TCP State Transitiion Diagram
-   + 如下的为TCP的状态转换图
-     #+begin_example
-                                                    starting point      
-                                                    +------------+<==========================================================+
-                                                    | CLOSED     |=====================================+                     |
-                                                    +-----+------+                 appl:active open    |                     ^
-                                                          | appl:passive open      send:SYN            v                     |
-                                                          v send:nothing                               |                     ^
-                recv:SYN  send:SYN,ACK              +------------+                                     v                     |
-              +-------------------------------------| LISTEN     |                                     |                     ^
-              |  +=================================>+------------+                                     |                     |
-              v  | recv:RST                                                                            v                     ^
-       +------------+                             recv:SYN                                       +------------+ appl:close   |
-       | SYN_RECVD  |<===========================================================================| SYN_SENT   |=============>+
-       +------+-----+                             send:SYN, ACK                                  +-----+------+ or timeout   |
-        send: | recv:ACK                       [[simultaneous open]]                 recv:SYN, ACK     |                     ^
-       nothing|                                                                     +==================+                     |
-              |                                                                     | send:ACK                               ^
-              |                                     +------------+<=================+            +------------+              |
-              +------------------------------------>| ESTABLISHED|------------------------------>| CLOSE_WAIT |              ^
-                                                    +------------+ recv:FIN send:ACK             +------------+              |
-                 appl:close send:FIN                      |                                            |appl:close           ^
-              +===========================================+                                            |send:FIN             |
-              |                                                                                        |                     ^
-              v                                  [[simultaneous close]]                                v                     |
-       +------------+ recv:FIN send:ACK             +------------+                               +------------+ recv:ACK     ^       >
-       | FIN_WAIT_1 |==============================>| CLOSING    |                               |LAST_ACK    |------------->+
-       +------+-----+==========+                    +-----+------+                               +------------+ send:nothing |
-              |                |                          |                                                                  ^
-              v recv ACK       |recv:FIN, ACK             | recv:ACK                                                         |
-              | send nothing   |send:ACK                  | send:nothing                                                     ^
-              v                |                          |                                                                  |
-       +------------+          +===================>+-----+------+         2*MSL timeout                                     ^
-       | FIN_WAIT_2 |==============================>| TIME_WAIT  |==========================================================>+
-       +------------+ recv:FIN send:ACK             +------------+
-     #+end_example
+*** TCP Options
+    + MSS: 在传输SYN的同时,发送自己的最大segment的大小(Maximum Segment Size)
+    + Windows scale: TCP向对方展示的最大窗口数目为65535(相应的头部只有16bit), 但是
+      现在的网络速度要远远大于这个数目, 所以需要一个新的参数Windows scale来成倍扩展
+      窗口大小. scale是0到14,表示窗口数目左移多少位最大窗口数目现在是1GB(65535*2^14)
+    + Windows scale是一个新的选项,老的TCP实现不支持,所以只有client发送了这个选项,
+      并且对方server回应了这个选项,我们才能使用. 同样的,server端只有在client发给了
+      你这个选项,你才能回应这个选择.
+    + Timestamp: 这个选项对于高速传输时可能产生的数据破坏修复(比如迟到的segment,重复的
+      segment)很有意义.
+*** TCP Connection Termination
+    + 建立一个连接需要三次握手, 终止一个连接则需要四次挥手:
+      1) 某个应用(服务器端或者客户端都可以, 全双工嘛,两边都一样)首先调用close, 我们称之为
+         主动关闭(active close). 这边的TCP主动发送一个FIN segment,表示自己传完了
+      2) 接受到FIN的对端执行被动关闭(passive close), 这个FIN会被TCP确认(发送一个ACK)
+         同时还会把收到FIN的消息(在当前所有数据之后,加上EOF的方式)传送给上层应用程序
+      3) 过了一段时间以后,刚才接受FIN的端,也没有啥东西可传了,就会发送自己的FIN给对方
+      4) 对方TCP接受到这个最后的FIN之后,也会发送一个ACK给对方确认的.
+    + 四次挥手只是"最多四次", 有些情况下用不了四次:
+      - 上面的1FIN可能随着数据一块发过去
+      - 上面的2ACK,3FIN可能会在一个segment发过来
+      - 上面2和3之间, 被动关闭的那一端还是可以传数据给主动关闭那一端的,只是反过来不行了,
+        这个叫做半关闭(half close)
+    + TCP四次挥手图解(close()可以释放FIN,同时exit或者非正常中断也会发送)
+      #+begin_example
+                       client                       server
+    
+                         |    FIN(M)                  |
+              close()    +--------------------------->|read() return 0 (eof)
+                         |    ACK(M+1)              / |
+        connect() returns|<-------------------------/ |
+                                   ........
+    
+                         |    FIN(N)                  |
+                         |<---------------------------+close()
+                         |\    ACK(N+1)               |
+                         | \------------------------->|
+                         |                            |
+                         |                            |
+    
+      #+end_example
+*** TCP State Transitiion Diagram
+    + 如下的为TCP的状态转换图---为客户端,===为服务器端
+      #+begin_example
+                                                     starting point      
+                                                     +------------+<==========================================================+
+                                                     | CLOSED     |=====================================+                     |
+                                                     +-----+------+                 appl:active open    |                     ^
+                                                           | appl:passive open      send:SYN            v                     |
+                                                           v send:nothing                               |                     ^
+                 recv:SYN  send:SYN,ACK              +------------+                                     v                     |
+               +-------------------------------------| LISTEN     |                                     |                     ^
+               |  +=================================>+------------+                                     |                     |
+               v  | recv:RST                                                                            v                     ^
+        +------------+                             recv:SYN                                       +------------+ appl:close   |
+        | SYN_RECVD  |<===========================================================================| SYN_SENT   |=============>+
+        +------+-----+                             send:SYN, ACK                                  +-----+------+ or timeout   |
+         send: | recv:ACK                       [[simultaneous open]]                 recv:SYN, ACK     |                     ^
+        nothing|                                                                     +==================+                     |
+               |                                                                     | send:ACK                               ^
+               |                                     +------------+<=================+            +------------+              |
+               +------------------------------------>| ESTABLISHED|------------------------------>| CLOSE_WAIT |              ^
+                                                     +------------+ recv:FIN send:ACK             +------------+              |
+                  appl:close send:FIN                      |                                            |appl:close           ^
+               +===========================================+                                            |send:FIN             |
+               |                                                                                        |                     ^
+               v                                  [[simultaneous close]]                                v                     |
+        +------------+ recv:FIN send:ACK             +------------+                               +------------+ recv:ACK     ^       >
+        | FIN_WAIT_1 |==============================>| CLOSING    |                               |LAST_ACK    |------------->+
+        +------+-----+==========+                    +-----+------+                               +------------+ send:nothing |
+               |                |                          |                                                                  ^
+               v recv ACK       |recv:FIN, ACK             | recv:ACK                                                         |
+               | send nothing   |send:ACK                  | send:nothing                                                     ^
+               v                |                          |                                                                  |
+        +------------+          +===================>+-----+------+         2*MSL timeout                                     ^
+        | FIN_WAIT_2 |==============================>| TIME_WAIT  |==========================================================>+
+        +------------+ recv:FIN send:ACK             +------------+
+      #+end_example
+    + 上面的各种state就是netstat能够显示的状态,其中有两种很少见的情况我们从没有讨论过:
+      - 同时打开(simulataneous open) : 两端几乎同时发送SYN 
+      - 同时关闭(simulataneous close): 两端几乎同时发送FIN
+*** Watcing the Packets
+    + 我们把客户端和服务器都在一起考虑,就会得到下面的图例
+** TIME_WAIT State
+   + 在上图中最令人迷惑的状态就是TIME_WAIT, 它要经过两倍的MSL(maximum segment 
+     lifetime)的时间才能转成关闭状态
+   + 我们先来看看MSL,他是一个ip数据报能够在网络上存活的时间,ip数据报有一个跳跃
+     极限(hop limit): hop字段的长度为255bit,也就是说ip在路由器间传递超过255次
+     就自动被丢弃了(有可能有循环产生).
+   + 根据前面的背景知识,我们至少有两个理由来维持两倍的MSL:
+     1) 假设我们在12.106.32.254:1500 和206.168.112.219:21之间建立了一个TCP
+        连接,之后关闭它. 过一段时间后,我们用同样的IP和端口对再建立一次连接, 后
+        一个连接称之为前一个连接的化身(incarnation), TCP必须避免新的连接受到老
+        的连接重复分组(lost duplicate, 也就是超时重传后,丢失的又通过路由修复
+        传回来了)的干扰,我们设置了两倍MSL,保证老的重复分组已经在网络上丢弃了
