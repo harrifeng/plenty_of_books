@@ -51,7 +51,8 @@
         序号(假设为K), 这个ACK和SYN都是在一个segment中发送的
      4) 客户端要确认服务器的序号为K的SYN
      5) 因为 2,3,4三步中要有三个segment才能完成连接的建立,所以这个过程叫做三次握手
-   + 三次握手图解
+   + 三次握手图解, 我们可以看到ACK返回的是J+1这是因为SYN本身会占用一个序列号, J是当前
+     序列号,那么等连接建立,下次发送的就是J+1了
      #+begin_example
                       client                       server
           socket()      |      SYN(J)                |socket(), bind(), listen()
@@ -63,4 +64,45 @@
                         | \------------------------->|accept() returns
                         |                            |read() blocks
                         |                            |
+     #+end_example
+** TCP Options
+   + MSS: 在传输SYN的同时,发送自己的最大segment的大小(Maximum Segment Size)
+   + Windows scale: TCP向对方展示的最大窗口数目为65535(相应的头部只有16bit), 但是
+     现在的网络速度要远远大于这个数目, 所以需要一个新的参数Windows scale来成倍扩展
+     窗口大小. scale是0到14,表示窗口数目左移多少位最大窗口数目现在是1GB(65535*2^14)
+   + Windows scale是一个新的选项,老的TCP实现不支持,所以只有client发送了这个选项,
+     并且对方server回应了这个选项,我们才能使用. 同样的,server端只有在client发给了
+     你这个选项,你才能回应这个选择.
+   + Timestamp: 这个选项对于高速传输时可能产生的数据破坏修复(比如迟到的segment,重复的
+     segment)很有意义.
+** TCP Connection Termination
+   + 建立一个连接需要三次握手, 终止一个连接则需要四次挥手:
+     1) 某个应用(服务器端或者客户端都可以, 全双工嘛,两边都一样)首先调用close, 我们称之为
+        主动关闭(active close). 这边的TCP主动发送一个FIN segment,表示自己传完了
+     2) 接受到FIN的对端执行被动关闭(passive close), 这个FIN会被TCP确认(发送一个ACK)
+        同时还会把收到FIN的消息(在当前所有数据之后,加上EOF的方式)传送给上层应用程序
+     3) 过了一段时间以后,刚才接受FIN的端,也没有啥东西可传了,就会发送自己的FIN给对方
+     4) 对方TCP接受到这个最后的FIN之后,也会发送一个ACK给对方确认的.
+   + 四次挥手只是"最多四次", 有些情况下用不了四次:
+     - 上面的1FIN可能随着数据一块发过去
+     - 上面的2ACK,3FIN可能会在一个segment发过来
+     - 上面2和3之间, 被动关闭的那一端还是可以传数据给主动关闭那一端的,只是反过来不行了,
+       这个叫做半关闭(half close)
+   + TCP四次挥手图解(close()可以释放FIN,同时exit或者非正常中断也会发送)
+     #+begin_example
+                      client                       server
+
+                        |    FIN(M)                  |
+             close()    +--------------------------->|read() return 0 (eof)
+                        |    ACK(M+1)              / |
+       connect() returns|<-------------------------/ |
+                                  ........
+
+                        |    FIN(N)                  |
+                        |<---------------------------+close()
+                        |\    ACK(N+1)               |
+                        | \------------------------->|
+                        |                            |
+                        |                            |
+
      #+end_example
