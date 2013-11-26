@@ -107,45 +107,45 @@
 
       #+end_example
 *** TCP State Transitiion Diagram
-    + 如下的为TCP的状态转换图---为客户端,===为服务器端
-      #+begin_example
-                                                     starting point
-                                                     +------------+<==========================================================+
-                                                     | CLOSED     |=====================================+                     |
-                                                     +-----+------+                 appl:active open    |                     ^
-                                                           | appl:passive open      send:SYN            v                     |
-                                                           v send:nothing                               |                     ^
-                 recv:SYN  send:SYN,ACK              +------------+                                     v                     |
-               +-------------------------------------| LISTEN     |                                     |                     ^
-               |  +=================================>+------------+                                     |                     |
-               v  | recv:RST                                                                            v                     ^
-        +------------+                             recv:SYN                                       +------------+ appl:close   |
-        | SYN_RECVD  |<===========================================================================| SYN_SENT   |=============>+
-        +------+-----+                             send:SYN, ACK                                  +-----+------+ or timeout   |
-         send: | recv:ACK                       [[simultaneous open]]                 recv:SYN, ACK     |                     ^
-        nothing|                                                                     +==================+                     |
-               |                                                                     | send:ACK                               ^
-               |                                     +------------+<=================+            +------------+              |
-               +------------------------------------>| ESTABLISHED|------------------------------>| CLOSE_WAIT |              ^
-                                                     +------------+ recv:FIN send:ACK             +------------+              |
-                  appl:close send:FIN                      |                                            |appl:close           ^
-               +===========================================+                                            |send:FIN             |
-               |                                                                                        |                     ^
-               v                                  [[simultaneous close]]                                v                     |
-        +------------+ recv:FIN send:ACK             +------------+                               +------------+ recv:ACK     ^       >
-        | FIN_WAIT_1 |==============================>| CLOSING    |                               |LAST_ACK    |------------->+
-        +------+-----+==========+                    +-----+------+                               +------------+ send:nothing |
-               |                |                          |                                                                  ^
-               v recv ACK       |recv:FIN, ACK             | recv:ACK                                                         |
-               | send nothing   |send:ACK                  | send:nothing                                                     ^
-               v                |                          |                                                                  |
-        +------------+          +===================>+-----+------+         2*MSL timeout                                     ^
-        | FIN_WAIT_2 |==============================>| TIME_WAIT  |==========================================================>+
-        +------------+ recv:FIN send:ACK             +------------+
-      #+end_example
-    + 上面的各种state就是netstat能够显示的状态,其中有两种很少见的情况我们从没有讨论过:
-      - 同时打开(simulataneous open) : 两端几乎同时发送SYN
-      - 同时关闭(simulataneous close): 两端几乎同时发送FIN
+  + 如下的为TCP的状态转换图---为客户端,===为服务器端
+    ,#+begin_example
+                                                   starting point
+                                                   +------------+<==========================================================+
+                                                   | CLOSED     |=====================================+                     |
+                                                   +-----+------+                 appl:active open    |                     ^
+                                                         | appl:passive open      send:SYN            v                     |
+                                                         v send:nothing                               |                     ^
+               recv:SYN  send:SYN,ACK              +------------+                                     v                     |
+             +-------------------------------------| LISTEN     |                                     |                     ^
+             |  +=================================>+------------+                                     |                     |
+             v  | recv:RST                                                                            v                     ^
+      +------------+                             recv:SYN                                       +------------+ appl:close   |
+      | SYN_RECVD  |<===========================================================================| SYN_SENT   |=============>+
+      +------+-----+                             send:SYN, ACK                                  +-----+------+ or timeout   |
+       send: | recv:ACK                       [[simultaneous open]]                 recv:SYN, ACK     |                     ^
+      nothing|                                                                     +==================+                     |
+             |                                                                     | send:ACK                               ^
+             |                                     +------------+<=================+            +------------+              |
+             +------------------------------------>| ESTABLISHED|------------------------------>| CLOSE_WAIT |              ^
+                                                   +------------+ recv:FIN send:ACK             +------------+              |
+                appl:close send:FIN                      |                                            |appl:close           ^
+             +===========================================+                                            |send:FIN             |
+             |                                                                                        |                     ^
+             v                                  [[simultaneous close]]                                v                     |
+      +------------+ recv:FIN send:ACK             +------------+                               +------------+ recv:ACK     ^
+      | FIN_WAIT_1 |==============================>| CLOSING    |                               |LAST_ACK    |------------->+
+      +------+-----+==========+                    +-----+------+                               +------------+ send:nothing |
+             |                |                          |                                                                  ^
+             v recv ACK       |recv:FIN, ACK             | recv:ACK                                                         |
+             | send nothing   |send:ACK                  | send:nothing                                                     ^
+             v                |                          |                                                                  |
+      +------------+          +===================>+-----+------+         2*MSL timeout                                     ^
+      | FIN_WAIT_2 |==============================>| TIME_WAIT  |==========================================================>+
+      +------------+ recv:FIN send:ACK             +------------+
+    ,#+end_example
+  + 上面的各种state就是netstat能够显示的状态,其中有两种很少见的情况我们从没有讨论过:
+    - 同时打开(simulataneous open) : 两端几乎同时发送SYN
+    - 同时关闭(simulataneous close): 两端几乎同时发送FIN
 *** Watcing the Packets
     + 我们把客户端和服务器都在一起考虑,就会得到下面的图例
       #+begin_example
