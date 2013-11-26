@@ -91,25 +91,25 @@
     + TCP四次挥手图解(close()可以释放FIN,同时exit或者非正常中断也会发送)
       #+begin_example
                        client                       server
-    
+
                          |    FIN(M)                  |
               close()    +--------------------------->|read() return 0 (eof)
                          |    ACK(M+1)              / |
         connect() returns|<-------------------------/ |
                                    ........
-    
+
                          |    FIN(N)                  |
                          |<---------------------------+close()
                          |\    ACK(N+1)               |
                          | \------------------------->|
                          |                            |
                          |                            |
-    
+
       #+end_example
 *** TCP State Transitiion Diagram
     + 如下的为TCP的状态转换图---为客户端,===为服务器端
       #+begin_example
-                                                     starting point      
+                                                     starting point
                                                      +------------+<==========================================================+
                                                      | CLOSED     |=====================================+                     |
                                                      +-----+------+                 appl:active open    |                     ^
@@ -144,12 +144,54 @@
         +------------+ recv:FIN send:ACK             +------------+
       #+end_example
     + 上面的各种state就是netstat能够显示的状态,其中有两种很少见的情况我们从没有讨论过:
-      - 同时打开(simulataneous open) : 两端几乎同时发送SYN 
+      - 同时打开(simulataneous open) : 两端几乎同时发送SYN
       - 同时关闭(simulataneous close): 两端几乎同时发送FIN
 *** Watcing the Packets
     + 我们把客户端和服务器都在一起考虑,就会得到下面的图例
+      #+begin_example
+                            Client                               Server
+              connect(blocks) | SYN(j), MSS=536                     | LISTEN(passive open), accept(blocks)
+        SYN_SENT(active open) +------------------------------------>+ SYN_RCVD
+                              |                                    /|
+                              | SYN(K), ACK(J+1), MSS=1460        / |
+            ESTABLISHED       +<---------------------------------+  |
+            connect returns   | \                                   |
+                              |  \   ACK(K+1)                       |
+                              |   +-------------------------------->+ ESTABLISHED, accept returns, read (blocks)
+                              |                                     |
+                              |       data(request)                 |
+                      write   +------------------------------------>+ read returns
+                read(blocks)  |                                    [server process request]
+                              |                                     |
+                              |                                     +
+                              |                                    /|write, read(blocks)
+                              |    data(reply), ACK of request    / |
+                read returns  +<---------------------------------+  |
+                              |\                                    |
+                              | \  ACK of reply                     |
+                              |  +--------------------------------->+
+
+                              |    FIN(M)                           |
+           close   FIN_WAIT_1 +------------------------------------>+ CLOSE_WAIT (passive close), read returns 0
+                              |                                    /|
+                              |    ACK(M+1)                       / |
+                   FIN_WAIT_2 +<---------------------------------+  |
+                              |                                     |
+                              |    FIN(N)                           |
+                   TIME_WAIT  +<------------------------------------+ close,LAST_ACK
+                              |\                                    |
+                              | \  ACK(N+1)                         |
+                              |  +--------------------------------->+ CLOSED
+      #+end_example
+    + 客户端的MSS是536,而服务器是1460, 两边的窗口不一样大是没问题的
+    + 上面传输数据的时候,服务器的对客户端数据请求的应答,是和数据一块传给客户端的
+      ,这个叫做piggybacking(捎带应答), 这个是因为server在200ms以内就处理了请求,
+      所以第一个返回的segment里面就ACK了request, 如果时间太久,那就会让segment
+      先走,在后面的segment里面来ACK
+    + 发起主动关闭(active close)的端(这里是客户端)最后进入了TIME_WAIT,因为它要
+      保证最后一个ACK(N+1)丢失了能够重发,所以要等待2MS的时间
 ** TIME_WAIT State
-   + 在上图中最令人迷惑的状态就是TIME_WAIT, 它要经过两倍的MSL(maximum segment 
+   + 在上图中最令人迷惑的状态就是TIME_WAIT, 它要经过两倍的MSL(maximum segment
      lifetime)的时间才能转成关闭状态
    + 我们先来看看MSL,他是一个ip数据报能够在网络上存活的时间,ip数据报有一个跳跃
      极限(hop limit): hop字段的长度为255bit,也就是说ip在路由器间传递超过255次
@@ -160,3 +202,12 @@
         一个连接称之为前一个连接的化身(incarnation), TCP必须避免新的连接受到老
         的连接重复分组(lost duplicate, 也就是超时重传后,丢失的又通过路由修复
         传回来了)的干扰,我们设置了两倍MSL,保证老的重复分组已经在网络上丢弃了
+     2) 我们上一节说道了主动close的客户端会保留TIME_WAIT长达2MS的时间,因为如果
+        最后一个ACK(N+1)丢失了的话,server端超市会重发FIN(N), 客户端要保证自己
+        还在这个connection, 然后重新发送ACK(N+1)
+** SCTP Association Establishment and Termination
+** Port Number
+** TCP Port Numbers and Concurrent Servers
+** Buffer Sizes and Limitations
+** Standard Internet Services
+** Protocol Usage by Common Internet Applications
