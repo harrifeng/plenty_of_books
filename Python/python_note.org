@@ -39,9 +39,200 @@
   + python不是说'变量'x没有定义,而是说'名字'(name) x 没有定义. 也就是说在python
     里面,这东西不叫变量了,叫名字. 因为它和变量不是完全一致的概念:
     - C语言中的'变量'是内存地址的别名
-    - python中的'名字'是一个字符串对象, 它和所指向的目标对象在一起
+    - python中的'名字'是一个字符串对象, 它和所指向的目标对象在一起在名字空间中构成
+      一个{name:object}关联
+  + python有很多名字空间, 比如globals的模块名字空间, locals的名字空间, class名字
+    空间, 不同的名字空间决定了对象的作用域和生命周期
+    #+begin_src python
+      In [47]: globals()
+      Out[47]: 
+      {'In': ['',
+        u'from IPython.core.completerlib import module_completion',
+        # ...so many...here
+        'x': 123}
+    #+end_src
+  + 可以看到名字空间其实就是一个字典, 我完全可以在名字空间自己添加项目来创建名字
+    #+begin_src python
+      In [48]: globals()["y"] = "Hello World"
+      
+      In [49]: y
+      Out[49]: 'Hello World'
+    #+end_src
+  + Python源码中有这样一句话: Names have no type, but objects do
+  + 名字仅仅是在某个时刻与空间中的某个对象进行关联, 其并不包括对象的任何信息, 只有
+    通过对象头部的类型指针才能获知其具体类型
+    #+begin_src python
+      In [57]: y
+      Out[57]: 'Hello World'
+      
+      In [58]: y = __import__("string")
+      
+      In [59]: type(y)
+      Out[59]: module
+      
+      In [60]: y.digits        # See module's member                                  
+      Out[60]: '0123456789'
+    #+end_src
+  + 在函数外部, locals()和globals()完全一样,但是在,函数内部的时候,locals()就
+    只关注当前函数堆栈帧的名字空间了
+    #+begin_src python
+      import sys
+      
+      print globals() is locals()
+      print locals()
+      
+      def test(x):
+          y = x + 100
+          print locals()              # contains local variables
+          print globals() is locals() # different now!
+      
+          frame = sys._getframe(0)  # currrent stack frame
+          print locals() is frame.f_locals
+          print globals() is frame.f_globals
+      
+      test(123)
+      
+      #######################################################
+      # ------output----                                    #
+      # True                                                #
+      # {'__builtins__': <module '__builtin__' (built-in)>, #
+      #  '__file__': 'test.py', '__package__': None,        #
+      #  'sys': <module 'sys' (built-in)>,                  #
+      #  '__name__': '__main__', '__doc__': None}           #
+      # {'y': 223, 'x': 123}                                #
+      # False                                               #
+      # True                                                #
+      # True                                                #
+      #######################################################
+    #+end_src
+  + 使用名字空间管理上下文对象, 带来无与伦比的linghuox,但是相比指针,效率要低下
+    的多
+* 内存管理
+  + 为了提升执行性能, python使用了内存池来减少操作系统分配和回收的操作, 那些小
+    于等于256字节的对象,都将直接冲内存池中获取
+  + 根据需要, python虚拟机每次从操场系统申请一块(具体来说就是从堆上面)256KB取名为
+    arena的大块内存,并且按照字节大小划分成多个pool(8字节pool, 16字节pool, 32字节
+    pool..等等..), 每个pool继续分成n个大小相同的block. block大小是8的倍数, 所以
+    存储13字节的对象,需要block为16字节的pool里面去寻找
+  + 大于256字节的对象, 直接用malloc在堆上分配内存
+  + 当所有arena的总量超出限制64MB的时候, 就不在请求新的arena, 直接在堆上分配对象
+* 引用传递
+  + python对象总是按引用传递,换句话说就是通过复制指针来达到多个名字指向同一个对象.
+    python没有值类型和引用类型的区别, 就算是最简单的整数也是拥有标准头的完整对象
+    #+begin_src python
+      In [13]: a = object()
+      
+      In [14]: b = a
+      
+      In [15]: a is b
+      Out[15]: True
+      
+      In [16]: hex(id(a)), hex(id(b))
+      Out[16]: ('0x1e51ef8', '0x1e51ef8')   # same address, same object
+      
+      In [17]: def test(x):
+         ....:        print hex(id(x))
+         ....: 
+      
+      In [18]: test(a)
+      0x1e51ef8                             # still the same
+    #+end_src
+  + 既然是直接复制了指针,那么其中一个变量更改,另外一个也会跟着更改, 如下.
+    #+begin_src python
+      In [20]: a
+      Out[20]: [1, 2, 3, 4]
+      
+      In [21]: b = a
+      
+      In [22]: b
+      Out[22]: [1, 2, 3, 4]
+      
+      In [23]: b.append(5)
+      
+      In [24]: b
+      Out[24]: [1, 2, 3, 4, 5]
+      
+      In [25]: a
+      Out[25]: [1, 2, 3, 4, 5]
+    #+end_src
+  + 如果我们不希望对象被更改,那么就需要使用
+    1) 不可变类型: int, long, str, tuple, fronzenset
+    2) 对象复制品: 下面是标准库里面的copy函数
+       #+begin_src python
+         In [29]: import copy
+         
+         In [30]: x = object()
+         
+         In [31]: l = [x]
+         
+         In [32]: l2 = copy.copy(l)     # shallow copy
+         
+         In [33]: l2 is l
+         Out[33]: False
+         
+         In [34]: l2[0] is x
+         Out[34]: True
+         
+         In [35]: l3 = copy.deepcopy(l) # deep copy
+         
+         In [36]: l3 is l
+         Out[36]: False
+         
+         In [37]: l3[0] is x
+         Out[37]: False
+       #+end_src
+
+
+
+
+    
+
+
       
 
 
 
     
+* 引用计数
+  + python默认采用引用计数来管理对象的内存回收, 当引用计数为0的时候,立刻回收该
+    对象内存:
+    1) 要么将对应的block标记为空闲
+    2) 要么返还给操作系统(free掉)
+  + 某些内置类型,比如小整形,因为缓存的缘故,可能引用计数永远都不会到达零
+  + 除了直接引用以外, python还支持弱引用:也即,运行在不增加引用计数,不妨碍对象
+    回收的情况下间接的引用对象. 但不是所有的类型都支持弱引用. list,dist的弱引
+    用会引发异常(弱引用的概念有点像c++里面的weak pointer)
+    #+begin_src python
+      In [38]: import sys, weakref
+      
+      In [39]: class User(object):pass
+      
+      In [40]: def callback(r):  # will be called when recycled
+         ....:        print "weakref object:", r
+         ....:        print "target object dead!"
+         ....: 
+      
+      In [41]: a = User()
+      
+      In [42]: r = weakref.ref(a, callback)
+
+      In [43]: sys.getrefcount(a)  # a is used as getrefcount's para, so count 2
+      Out[50]: 2
+      
+      In [51]: r() is a
+      Out[51]: True
+      
+      In [52]: del a
+      weakref object: <weakref at 031944E0; dead>
+      target object dead!
+      
+      In [53]: hex(id(r))
+      Out[53]: '0x31944e0'  # same with the deleted address, weak ref
+      
+      In [54]: r() is None  # a's memory is already recycled, r is None now
+      Out[54]: True
+    #+end_src
+  + 引用计数是非常简单而且高效的内存回收方式, 大多数情况下可以很好的工作,除了
+    循环引用造成的计数故障. 简单明显的循环引用,可以用弱引用打破循环关系.但是实际
+    开发中遇到的循环引用旺旺很复杂,是多个对象引起的.这个时候,只有靠GC去回收了
+
