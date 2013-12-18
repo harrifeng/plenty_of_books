@@ -1,0 +1,47 @@
+* 固定长度类型
+  + 基本类型定义结构如下
+    #+begin_src c
+      #define PyObject_HEAD                           \
+          Py_ssize_t ob_refcnt;                       \
+          struct _typeobject *ob_type;
+      typedef struct _object {
+          PyObject_HEAD
+      } PyObject;
+      typedef struct {
+          PyObject_HEAD
+          long ob_ival;
+      } PyIntObject;
+    #+end_src
+  + ob_refcnt在等于0, 或者超出作用域的时候会被回收
+  + ob_type是类型指针.
+* 变长类型
+  + 变长类型会多出一个记录元素项数量的字段ob_size(对PyObject_HEAD进行加工):
+    #+begin_src c
+      #define PyObject_VAR_HEAD               \
+          PyObject_HEAD                       \
+          Py_ssize_t ob_size; ! /* Number of items in variable part */
+      typedef struct {
+          PyObject_VAR_HEAD
+      } PyVarObject;
+    #+end_src
+* 名字空间
+  + 这个名字空间不是c++里面的namespace, 我们如果不声明就使用x的话,会得到下面的
+    结果
+    #+begin_src python
+      In [45]: x
+      ---------------------------------------------------------------------------
+      NameError                                 Traceback (most recent call last)
+      <ipython-input-45-401b30e3b8b5> in <module>()
+      ----> 1 x
+      
+      NameError: name 'x' is not defined
+    #+end_src
+  + python不是说'变量'x没有定义,而是说'名字'(name) x 没有定义. 也就是说在python
+    里面,这东西不叫变量了,叫名字. 因为它和变量不是完全一致的概念:
+    - C语言中的'变量'是内存地址的别名
+    - python中的'名字'是一个字符串对象, 它和所指向的目标对象在一起
+      
+
+
+
+    
