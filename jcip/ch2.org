@@ -1,0 +1,147 @@
+* Chapter 2: Thread Safety
+  + 有点令人出乎意料的是, 并发编程,并不是一直都和线程或者锁有关.写出线程安全代码
+    更重奥的是管理"状态的准入"(accesss to state), 特别是对共享的可变状态
+  + 一般来说,一个对象的状态就是数据. 一个对象的状态有时候也会和其他对象有关,这要
+    看是哪种数据结构:比如HashMap的状态一部分存在HashMap中,另一部分存在成员对象
+    里面,比如下面的例子, hm里面肯定存有一部分状态,但是同时foo1,foo2里面也有,因
+    为java的hashmap其实存储的不过是一个reference, 下面例子中,通过1, hashmap
+    只能找到foo1这个object, foo的val值是多少,hashmap不会存储的
+    #+begin_src java
+      ///////////////////
+      // output        //
+      // 1 15          //
+      // 2 35          //
+      // [1=115, 2=35] //
+      ///////////////////
+      
+      public class TestCode {
+          public static void main(String[] args) {
+              HashMap<Integer, Foo> hm = new HashMap<Integer, Foo>();
+              Foo foo = new Foo(15);
+              Foo foo2 = new Foo(35);
+              hm.put(1, foo);
+              hm.put(2, foo2);
+      
+              for (Map.Entry<Integer, Foo> e : hm.entrySet()) {
+                  System.out.println(e.getKey() + " " + e.getValue());
+              }
+              foo.setVal(115);
+              System.out.println(hm.entrySet());
+          }
+      }
+      
+      class Foo{
+          public void setVal(int val) {
+              this.val = val;
+          }
+      
+          private int val;
+          public Foo(int v) {
+              val = v;
+          }
+      
+          public String toString() {
+              return "" + val;
+          }
+      }
+    #+end_src
+  + 所谓"共享",是说一个变量可以被多个线程访问到,所谓"可变醒"是说一个变量的值是可
+    以改变的.所谓线程安全,就是要防止数据被"无法控制的并发访问"
+  + 一个对象是否需要线程安全,就是看他是否是被多个线程访问到.
+  + 如果多个线程访问一个数据, 其中有一个要写入的话, 我们就需要同步方法了, 在java
+    里面就是关键字synchronized, 其核心就是提供一个"排外锁(exclusive locking)"
+    这个排外锁是最粗鲁的方法,同步方法还包括:
+    - volatile 关键字
+    - 显示锁explicit lock
+    - 自动变量automatic variable
+  + 如果多个线程访问同一个数据导致错误, 那么可以有如下几个方法来改正:
+    - 不要在线程直接分享state
+    - 把state标记成immutable
+    - 在所有能够访问到state的地方,使用synchronization
+  + 上面的建议看起来简单,但是如果你一开始设计的时候没有考虑到线程安全,那么改起来
+    确实是不那么容易,所以最好的方法,就是在你设计一个class的时候,就把他设计成线程
+    安全的
+  + 在一个大型的系统上面,确认一个变量是否被多个线程访问,是非常困难的.幸运的是,面向
+    对象的很多设计方法能够帮助我们设计出更好,更容易维护的class. 比如封装和数据掩盖
+    可以帮助你更容易的设计线程安全:越少的代码能够接触到某些代码, 越容易保证使用的
+    同步性.
+** What is Thread Safety:
+   + 如果一个类能在多个线程同时调用,且不管运行时如何调度其他线程, 都可以在调用代
+     码不用附加任何同步机制的情况下, 行为正常的运行
+   + A class is thread-safe if it behaves correctly when accessed 
+     from multiple threads, regardless of the scheduling or interlevaing 
+     of the execution of thosed threads by the runtime environment, and 
+     with no additional synchronization other coordination on the part 
+     of the calling code
+*** Example: A Statelses Servlet
+    + 第一章我们说过, 有些框架会创建线程然后从这些线程里面,调用你的代码, 从而要
+      求你自己的代码也是线程安全的. 其实很多时候,线程安全的要求,并非是你想要使用
+      线程,而是你想要使用某些功能,比如Servlet framework
+    + 下面这个例子,从request接受请求,factor这个请求,然后放到response传回去
+      #+begin_src java
+        @ThreadSafe
+        public class StatelessFactorizer implements Servlet {
+            public void service(ServletRequest req, ServletResponse resp) {
+                BigInteger i = extractFromRequest(req);
+                BigInteger[] factors = factor(i);
+                encodeIntoResponse(resp, factors);
+            }
+        }
+      #+end_src
+    + StatelessFactorizer, 和大多数的servlet一样是没有状态的(stateless):
+      - 自己没有任何的数据
+      - 也不引用任何其他类的数据
+    + StatelessFactorizer拥有短暂的state, 局部变量, 但是这些局部变量是在线程
+      自己的stack上面的,只对当前运行的线程可见.线程A访问StatelessFactorizer不
+      会影响线程B访问StatelessFactorizer,因为他们之间不会共享state.
+    + 因为一个线程访问stateless的对象不会影响其他线程的正确运行,所以,
+      stateless的对象总是线程安全的
+** Atomicity
+   + 如果我们想加入一个变量来计算当前的处理的请求要求.那么一个常见的错误
+     加变量的方法:
+     #+begin_src java
+       @NotThreadSafe
+       public class UnsafeCountingFactorizer implements Servlet {
+           private long count = 0;
+           
+           public long getCount() {
+               return count;
+           }
+       
+           public void service(ServletRequest req, ServletRequest resp) {
+               BigInteger i = extractFromRequest(req);
+               BigInteger[] factors = factor(i);
+               ++count;
+               encodeIntoResponse(resp, factors);
+           }
+       }
+     #+end_src
+   + 第一章的例子已经讲到, 如果调度非常不幸运的话,会出现两个线程返回值相同的情况,
+     或许你觉得,极端返回一个相同的计数,这种低概率的精度错误可以忽略,那你可就打错特
+     错了. 如果这个计数是用来产生序列,或者对象标识的话,那么从不同的调用处得到相同
+     的这种标识(或者序列)会导致数据一致性的多种问题,最常见的就是race condition
+*** Race Conditions
+    + 当一个正确的结果,需要依赖幸运的时机掌握的时候(不完全靠自己就行), 竞争环境就
+      会发生
+    + 最常见的一种race condition就是check-then-act(要观察下当前的情况,然后做
+      决定):
+      - 某天你和X约好去大学城旁边的地铁站见面
+      - 到了你发现有两家星巴克A和星巴克B
+      - 你去星巴克A, 没发现X, 去星巴克B, 又没发现X. 然后去A,然后去B...非常繁忙,
+        但是还是找不到X,这时候存在很多种情况:
+        1) 你朋友就没来
+        2) 你朋友刚才才星巴克B,当你去星巴克B的时候,他已经去星巴克A啊.
+      - 有可能这个下午你可能都见不到你的朋友,因为你的策略是:
+        1) 去某个星巴克,发现X不在check
+        2) 然后去另外一个星巴克then-act
+      - 问题的根源在于[去某个星巴克, 发现X不在], 这个过程只是"当时正确",一旦你离开
+        你的朋友X可能就来了. 这个观察是无效的,换句话说就是, "无效的观察,导致了大多
+        数的race condition"
+
+
+    
+
+
+      
+
+
