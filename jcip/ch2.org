@@ -120,6 +120,9 @@
      或许你觉得,极端返回一个相同的计数,这种低概率的精度错误可以忽略,那你可就打错特
      错了. 如果这个计数是用来产生序列,或者对象标识的话,那么从不同的调用处得到相同
      的这种标识(或者序列)会导致数据一致性的多种问题,最常见的就是race condition
+   + 这个例子还会出现另外一种叫做read-modify-write的race condition:你像通过
+     count的大小来进行操作, 在你getCount()的过程中, count的大小可能已经改变了.
+     也就是说读取一个可能会被更改的值,读取的结果可能是无效的.
 *** Race Conditions
     + 当一个正确的结果,需要依赖幸运的时机掌握的时候(不完全靠自己就行), 竞争环境就
       会发生
@@ -137,6 +140,45 @@
       - 问题的根源在于[去某个星巴克, 发现X不在], 这个过程只是"当时正确",一旦你离开
         你的朋友X可能就来了. 这个观察是无效的,换句话说就是, "无效的观察,导致了大多
         数的race condition"
+*** Example: Race Conditions in Lazy Initialization
+    + 另外一个使用check-then-act的例子是lazy initialization: getInstance首先
+      厕所一下ExpensiveObject是不是已经创建了,如果还没有创建, 就创建,如果已经创建了
+      就返回存在的object
+      #+begin_src java
+        @NotThreadSafe
+        public class LazyInitRace {
+            private ExpensiveObject instance = null;
+        
+            public ExpensiveObject getInstance() {
+                if (instance == null) {
+                    instance = new ExpensiveObject();
+                }
+            }
+        }
+      #+end_src
+    + LazyInitRace也存在race condition: 线程A和B同时调用getInstance, A看到的是
+      null, 然后创建ExpensiveObject, 恰巧在创建的同时(unluck timing)B也看到的是
+      null, 然后也创建ExpensiveObject.所以不同的调用者会收到不同的对象
+*** Compound Actions
+    + LazyInitRace 和 UnsafeCountingFactorizer 的数据都需要一种原子性的操作,数据
+      更改的过程变的不可分: 保证其他线程观察或者修改state的时候,要么是在我们开始之前,
+      要么是在我们修改之后, 而不是在这两者之间
+    + 为了保证线程安全,check-then-act和read-modify-write 操作都必须是原子性的.
+    + 我们把check-then-act和read-modify-write这种必须通过原子性来保证线程
+      安全的操作叫做compound action
+      #+begin_src java
+        @ThreadSafe
+        public class CountingFactorizer implements Servlet {
+            private final AtomicLong count = new AtomicLong(0);
+        
+            public long getCount() {
+                return count.get();
+            }
+        
+            public void service(ServletRequest req, ServletRequest resp)
+      #+end_src
+
+      
 
 
     
