@@ -80,6 +80,96 @@
     + 现代的GUI框架,都使用了EDT(event dispatch thread),也就当用户按一个按钮的时候,
       一个相应的thread会运行.
 ** Risks of Threads
+   + java内置的对线程的支持是一把双刃剑,这提高了对程序员的要求, 一旦使用多线程,
+     就要明白什么是线程安全
+*** Safety Hazards
+    + 下面这段代码就是线程不安全的
+      #+begin_src java
+        @NotThreadSafe
+        public class UnsafeSequence {
+            private int value;
+        
+            /* Returns a unique value */
+            public int getNext() {
+                return value++;
+            }
+        }
+      #+end_src
+    + 代码线程不安全的原因,是存在下面一种调用过程(非常巧合是吧..对的,就是非常巧,
+      也就是说线程的错误不是每次都能重现的)让两个线程调用getNext函数,却得到了同
+      样的值(本来这个函数是希望返回值都是独一无二的)
+      #+begin_example
+        
+                +--------+        +--------+        +--------+
+         A      | value  +------->| 9+1    +------->+ value  |
+                |   9    |        | = 10   |        |  10    |
+                +--------+        +--------+        +--------+
+        
+        
+                         +--------+        +--------+        +--------+ 
+         B      -------->| value  +------->| 9+1    +------->+ value  | 
+                         |   9    |        | = 10   |        |  10    | 
+                         +--------+        +--------+        +--------+ 
+      #+end_example
+    + 因为所有的线程共享内存,而且同时运行, 他们就可能更改其他用户正在使用的数据,
+      这本来是一个巨大的方便之处,因为比起其他的进程间通信, 这种使用数据的方式明
+      显容易很多. 但是这样也会存在前面说到的你无法知道当前变量是否正被使用. 这个
+      时候,就要java提供的同步方法(synchronization mechanism)
+      #+begin_src java
+        @ThreadSafe
+        public class Sequence {
+            @GuardedBy("this") private int nextValue;
+        
+            public synchronized int getNext() {
+                return nextValue++;
+            }
+        }
+      #+end_src
+    + 如果没有这些同步方法(synchronization mechanism), 编译器,硬件会被赋予相当
+      大的自由, 比如会缓存当前变量到寄存器(这个还好,全局可见), 或者缓存变量到某个
+      核(processor-local)的cache,这就麻烦了,因为如果线程不在这个核上运行的,根本
+      看不到这个cache. 这些操作原本是为了提高程序的运行效率,但是这些操心无法让多个
+      线程安全的共享数据
+*** Liveness Hazards
+    + 前面说的safety意味着"nothing bad ever happens", 而这里的liveness意味着"something
+      good eventually happens". 也就是说不关保证没错就行,还要保证我们要做的事情做到!
+    + 一个常见不能达到liveness的非多线程例子,就是死循环. 到了多线程阶段,又引入了非常多的这种
+      例子:
+      - deadlock
+      - starvation
+      - livelock
+*** Performance Hazards
+    + 前面说的liveness意味着"something good eventually happens", 这个eventually有时候
+      远远不够,因为我们想好事情快快来.也就是说我们要提高多线程程序的效率
+    + 效率这个东西涉及到很多:
+      - 服务时间
+      - 响应率
+      - 输出
+      - 资源消耗
+      - 可扩展性
+    + 就像liveness一样,多线程程序的效率的难题不仅仅来自传统的问题,还来自于多线程
+      的引入带来的问题
+    + 在理想的情况下,利用多核系统带来的都是净收益,但这明显不现实的.线程多的情况下, 
+      上下文切换更加频繁, 也意味着更多的资源消耗:
+      - 保存上下文
+      - CPU调度
+      - 使用syn, 无法享受编译器优化, 无法享受缓存
+*** Threads are Everywhere
+    + 即便你没有显示创建过线程, 框架可能就为你创建过进程,而调用这些进程的代码必
+      须线程安全
+    + 每一个Java程序都使用了线程
+      1) 当JVM开始的时候,会创建houskeeping task 线程负责回收, 还有一个main
+         线程来运行main方法.
+      2) AWT(Abstract Windows Tookit) 创建了一个线程来管理用户事件
+      3) Timer创建了一个线程来管理被拒绝的任务
+      4) Servlet创建了线程池,并且调用这些线程里面的方法
+    + 如果你是使用了前面的这些工具, 就需要了解线程安全, 因为框架会使用线程来调用
+      你的代码, 你的代码会访问到应用的状态.这就要求所有跟这些状态相关的代码线程
+      安全
+
+      
+
+      
       
       
      
