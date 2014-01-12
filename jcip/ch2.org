@@ -175,8 +175,155 @@
                 return count.get();
             }
         
-            public void service(ServletRequest req, ServletRequest resp)
+            public void service(ServletRequest req, ServletRequest resp) {
+                BigInteger i = extractFromRequest(req);
+                BigInteger[] factors = factors(i);
+                count.incrementAndGet();
+                encodeIntoResponse(resp, factors);
+            }
+        }
       #+end_src
+    + 上面这个例子就是利用了java的java.util.concurrent.atomic, 这个package能够使
+      得一切操作原子化.
+    + 在实际操作中,尽可能的使用已有的线程安全的类来管理类的状态.
+** Locking
+   + 我们前面通过一个线程安全的AtomicLong类来管理计数,保证了整个大类的线程安全, 如果我
+     要加入更多,类型更为复杂(不是long)的state,我还可以像下面的例子一样,全部都使用Atomic
+     帮手(这里是AtomicReference)么
+   + 比如为了提高servlet的效率,我们设计了一个cache的机制, 如果新的请求和上一个请求是一样
+     的,那么我们就可以不用重复计算,而直接返回上次的计算结果
+     #+begin_src java
+       @NotThreadSafe
+       public class UnsafeCachingFactorizer implements Servlet {
+           private final AtomicReference<BigInteger> lastNumber
+               = new AtomicReference<BigInteger> ();
+           private final AtomicReference<BigInteger[]> lastFactors
+               = new AtomicReference<BigInteger[]>();
+       
+           public void service(ServletRequest req, ServletResponse resp) {
+               BigInteger i = extractFromRequest(req);
+               if (i.equals(lastNumber.get())) {
+                   encodeIntoResponse(resp, lastFactors.get());
+               } else {
+                   BigInteger[] factors = factor(i);
+                   lastNumber.set(i);
+                   lastFactors.set(factors);
+                   encodeIntoResponse(resp, factors);
+               }
+           }
+       }
+     #+end_src
+   + 尽管上面的例子中,每一个变量都是线程安全的,但是整个类却无法达到线程安全.
+   + 线程安全的定义,要求"不变式"一直有效, 我们这个逻辑的"不变式"就是: lastFactors
+     一定要是lastNumber计算的结果, 很遗憾,上面的代码无法满足这个要求, 除非我们"原子
+     性"的同时更新两个变量: 线程A获取这两个变量的时候(分两次),线程B可能已经更改了他们
+*** Intrinsic Locks
+    + java提供了一种最简单的锁,内置锁, 他主要是通过原子化函数(静态的原子化是类)来达到
+      线程安全的目的, 如下
+      #+begin_src java
+        @ThreadSafe
+        public class SynchronizedFactorizer implements Servlet {
+            @GuardedBy("this") private BigInteger lastNumber;
+            @GuardedBy("this") private BigInteger[] lastFactors;
+        
+            public synchronized void service(ServletRequest req,
+                                             ServletResponse resp) {
+                BigInteger i = extractFromRequest(req);
+                if (i.equals(lastNumber)) {
+                    encodeIntoResponse(resp, lastFactors);
+                } else {
+                    BigInteger[] factors = factor(i);
+                    lastNumber = i;
+                    lastFactors = factors;
+                    encodeIntoResponse(resp, factors);
+                }
+            }
+        }
+      #+end_src
+    + 这种原子化虽然达到了线程安全的目的,但是确是以巨大的效率牺牲为代价的:因为内置锁本
+      质上是一种互斥锁,同一时间只能有一个线程访问函数.
+*** Reentrancy
+    + 内置锁都是可重入(renentrancy)的, 所谓可重入,就是说一个线程自己已经获得了某个内
+      置锁, 当它试图再次获得这个内置锁的时候,是成功的!可是一个线程为什么会再次请求自己
+      已经拥有的锁呢? 在面向对象当中,这种例子非常常见. 可以说可重入的设计,极大的简化了
+      面向对象的并发开发. 
+      #+begin_src java
+        public class Widget {
+            public synchronized void doSomething() {
+            }
+        }
+        
+        public class LoggingWidget extends Widget {
+            pblic synchronized void doSomething() {
+                System.out.println(toString() + ": calling doSomething");
+                super.doSomething();
+            }
+        }
+      #+end_src
+    + 上面的例子中,如果内置锁不是可重入的话, 在调用super.doSomething()的时候,就会永
+      远的等待下去,(因为子类的doSomething开始的时候,肯定会获取内置锁,而调用super父类
+      函数的时候,会再次试图获取内置锁)
+    + java实现内置锁的可重入的方法,就是计数,线程首次获得这个锁,计数为0, 如果其他线程线
+      程来,发现是0,就等待,而本线程再次获取这个锁,会导致计数变成1
+** Guarding State with Locks
+   + 锁的引入,让多线程有序访问变量(一个接一个,而不是同时)变得方便. 前面说到的check-then-act
+     和read-modify-write也可以使用锁, 但是要变得非常复杂:
+     - 在整个compound action的过程当中都要用锁
+     - 每个变量用到的地方还要用锁
+   + 每一个共享的变量,都要用一个锁来保护,这样维护的人才知道是哪一个锁
+   + 前面的例子交给我们:
+     - 如果只有一个变量被多个线程访问,那么要给这个变量加锁, 或者把这个变量替换成线程安全类
+     - 如果"不变式"涉及到多个变量,而且这些变量也会被多个线程访问,那么要把他们都放在同一个锁里面
+   + 前面我们讲到多个变量的线程安全问题的时候,我们是讲整个函数都加锁,这样会有效率方面的问题, 
+     所以加锁的层次要降低一些
+** Liveness and Performance
+   + 刚才我们的锁是加在了函数层次,这里我们可以重新设计代码,让锁的层次更低一些
+     #+begin_src java
+       @ThreadSafe
+       public class CachedFactorizer impements Servlet {
+           @GuardedBy("this") private BigInteger lastNumber;
+           @GuardedBy("this") private BigInteger[] lastFactors;
+           @GuardedBy("this") private long hits;
+           @GuardedBy("this") private long cacheHits;
+       
+           public synchronized long getHits() {
+               return hits;
+           }
+       
+           public synchronized double getCacheHitRatio() {
+               return (double) cacheHits / (double) hits;
+           }
+       
+           public void service(ServletRequest req, ServletResponse resp) {
+               BigInteger i = extractFromRequest(req);
+               BigInteger[] factors = null;
+               synchronized(this) {
+                   ++hits;
+                   if (i.equals(lastNumber)) {
+                       ++cacheHits;
+                       factors = lastFactors.clone();
+                   }
+               }
+               if (factors == null) {
+                   factors = factor(i);
+                   synchronized(this) {
+                       lastNumber = i;
+                       lastFactors = factors.clone();
+                   }
+               }
+               encodeIntoResponse(resp, factors);
+           }
+       }
+     #+end_src
+   + 从代码中我们看到,因为使用了内置锁, AtomaticLong这种线程安全类的方式被抛弃了,因为两种
+     同步方式常常会引发错误
+   + 我们代码加锁的区域不大,但是必要的地方也都加了锁, 这样既坚固了效率,又保障了安全
+   + 不要试图在如下两种情况下加锁:
+     - 时间较长的计算
+     - 有可能无法快速完成的任务(比如网络IO, 控制台IO)
+
+
+
 
       
 
