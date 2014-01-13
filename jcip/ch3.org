@@ -1,0 +1,156 @@
+* chapter 3: Sharing Objects
+  + 第二章我们讲到过了,并发编程的关键,是管理对共享,可变数据的访问.
+  + 所以第二章主要讲的是,如何利用同步来防止多个线程在同一时间访问同一个数据. 这
+    一章讲的则是,通过"其他技巧"让对象能够共享,而且被多个线程同时访问,当然是线程
+    安全的访问
+  + 第二章的介绍,很容易让人误以为同步"只能":
+    1) 让操作原子化
+    2) 创建critical section
+  + 其实同步还有其他的不易察觉却非常重要的作用:内存的可见性(memory visibility):
+    我们不仅仅想阻止线程A在线程B使用数据X的时候得到这个数据, 我们还想让A可以在B
+    使用更改X的时候,能够"看到"数据X的最新值
+** Visibility
+   + 下面这个例子,有两个线程,main线程和reader线程, main线程首先启动reader线程, 
+     然后设置ready为true, 并给予number一个非零值.reader线程不停的check readay
+     的状态是否为true,如果是的情况下,就打印number的值
+     #+begin_src java
+       public class NoVisibility {
+           private static boolean ready;
+           private static int number;
+       
+           private static class ReaerThread extends Thread {
+               public void run() {
+                   while (!ready) {
+                       Thread.yield();
+                   }
+                   System.out.println(number);
+               }
+           }
+       
+           public static void main(String[] args) {
+               new ReaerThread().start();
+               number = 42;
+               ready = true;
+           }
+       }
+     #+end_src
+
+   + 虽然上面的例子在大多数情况下都能成功打印42, 但是还是存在着下面两种可能的错误:
+     1) 死循环:因为读不到ready变成true
+     2) 打印0:因为读不到number变成42
+   + 造成上面两种错误的原因是:在没有同步的情况下, JVM有权利把所有的指令按照自己
+     的想法重新安排顺序(通常是为了缓存,效率等原因)
+   + 如果想避免上述情况的发生,说起来也是很简单的:如果一个数据会在多个线程间共享,
+     那么就一定要使用合适的同步机制
+*** Stale Date
+    + 上面错误发生的原因根本上在于,如果不使用同步机制, 某个线程很多时候会发现"失效"
+      的数据, 更坏的是,"失效"数据很可能是部分发作的,比如上面的例子, 有两个变量,可能
+      有时候是一个失效,或另一个失效,或者都失效
+    + 失效的数据,会造成巨大的危害.下面的例子MutableInteger不是线程安全的,线程A正在
+      getter的时候,线程B可能在setter.
+      #+begin_src java
+        @NotThreadSafe
+        public class MutableInteger {
+            private int value;
+        
+            public int get() {
+                return value;
+            }
+            public void set(int value) {
+                this.value = value;
+            }
+        }
+      #+end_src
+    + 更改的方法,就是给两个函数都加上同步机制:仅仅给予setter同步是不够的,因为某个线程
+      还是可以在getter的时候,得到"失效"的数据
+      #+begin_src java
+        @ThreadSafe
+        public class SynchronizedInteger {
+            @GuardeBy("this") private int value;
+        
+            public synchronized int get() {
+                return value;
+            }
+            public synchronized void set(int value) {
+                this.value = value;
+            }
+        }
+      #+end_src
+*** Non-atomic 64-bit Operations
+    + 如果没有使用同步机制,线程可能会读取到"失效"的变量,但至少这个变量还是其他线
+      程更改的,还不是很离谱.有些时候,会遇到更离谱的情况:读取的值直接就是一个随机
+      值
+    + 这种随机值的情况,主要发生在64位的变量(long 和double)上面,JVM读取和存储32
+      位的数字是原子的,但是读取和存储64位的数字是分两次读取的(64位java应该就没有
+      这个问题).所以如果读写64位在两个不同的线程里面,会出现前32位和后32位的数字
+      来自不同64位数字的尴尬随机数.
+    + 所以即便你不担心会读取到"失效"的变量,如果一旦有64位变量存在被多个线程读取的
+      情况(而且没有加锁,没有标记成volatile), 还是加个同步机制吧
+*** Locking and Visiility
+    + 内置锁可以用来保证一个线程可以"保证"看到另一个线程所做的操作, 比如下面的例
+      子, 如果没有同步机制, 线程B无法保证看到x的新值1, 因为它可能由于优化的原因
+      直接取用了x在缓存里面的值
+      #+begin_example
+                     Thread A
+                 +---------------+
+                 |   y = 1       |
+                 +---------------+
+                       
+                 +---------------+
+                 |   lock M      |
+                 +---------------+
+        
+                 +---------------+
+                 |   x = 1       |
+                 +---------------+
+        
+                 +---------------+
+                 |   unlock M    |                            Thread B
+                 +---------------+ --------------------->  +---------------+
+                                                           |  lock M       |
+                                                           +---------------+
+        
+                                                           +---------------+
+                                                           |  i = x        |
+                                                           +---------------+
+        
+                                                           +---------------+
+                                                           |  unlock M     |
+                                                           +---------------+
+        
+                                                           +---------------+
+                                                           |  j = y        |
+                                                           +---------------+
+        
+      #+end_example
+    + 所以,"锁"并不是只是为了"互相排斥(mutual excusion)", 而且也为了能够让其他
+      线程看到"有效的"内存值
+*** Volatile Variables
+    + Java还提供了一个简单,轻量级的synchronizated, 就是关键字volatile.编译器
+      看到volatile的时候,就知道这个变量是共享的, 所以:
+      1) 编译器不会把对volatile变量的操作reorder
+      2) 编译器不会把volatile变量放入寄存器进行缓存
+    + 既然是轻量级的lock,那么volatile还有其局限性:
+      - lock可以保证原子性和内存可见性
+      - 轻量级lock, volatile变量只能保证内存可见性
+    + volatile非常的脆弱,甚至无法保证++的原子性(count++), 最常见的volatile变量
+      的用法也就是flag:
+      #+begin_src java
+        volatile boolean asleep;
+        
+        while(!asleep) {
+            countSomeSheep();
+        }
+      #+end_src
+    + 只有保证如下的三个条件,才能使用volatile变量:
+      1) 对这个变量的写入操作,不涉及到它原来的值
+      2) 这个变量不涉及其他变量的"不变式"(invariants)
+      3) 没有任何理由要为访问此变量加锁
+** Publication and Escape
+   + 
+
+      
+
+      
+
+    
