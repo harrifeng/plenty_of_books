@@ -386,7 +386,64 @@
     + ThreadLocal最开始的初衷就是建立thread confinement的,为每个线程创建一份自己
       的数据,所以不要在其他方面滥用
 ** Immutability
-   + 
+   + 同步的对象是"共享的变量", 我们打完"共享"的主意,现在是打"变量"主意的时候了,
+     把"变量"变成"常量"是一个更简单的注意:常量天生就线程安全
+   + 当然我们这里的常量是immutable objects: 就是在构造之后就无法改变的对象
+   + immutable对象不是所有的域都是final, 那远不够, 要达到下面的条件
+     - 对象的state在构造以后无法改变
+     - 对象所有的域都是final的
+     - 对象构造的过程是没有差错的(不会导致引用逃逸 reference escape)
+   + Immutable对象的内部还是可以使用mutable,只是要好好设计.比如下面这个例子, Set
+     是可以改变的,但是下面的设计让构造之后,就只有final且private的stooges才可以
+     接触到这个Set
+     #+begin_src java
+       public class ThreeStooges {
+           private final Set<String> stooges = new HashSet<String>();
+       
+           public ThreeStooges() {
+               stooges.add("Moe");
+               stooges.add("Larry");
+               stooges.add("Curly");
+           }
+       
+           public boolean isStooge(String name) {
+               return stooges.contains(name);
+           }
+       
+       }
+     #+end_src
+   + 即便是使用了immutable的对象,其实也是可以"改变"它的值的:使用一个新的对象
+     只不过值不同(allocation比你想象的要高效, immutable会带来更多的优势)
+*** Final Fields
+    + final变量无法改变(虽然他们指向的对象可能改变). 使用final能够保证:
+      - 初始化安全(initialization safety)
+      - 不需要同步机制,保证线程安全
+    + 除非某个变量可能会改变,把所有的变量声明为final是一个good practice
+*** Example: Using Volatile to Publish Immutable Objects
+    + 下面这个例子就是创建了一个immutable holder class,来确保线程安全
+    + 如果用mutable holder object,你必须使用lock. 下面的immutable object
+      一旦创建就无法更改. 如果想要更改变量,那么就要创建一个新的immutable 
+      object.
+      #+begin_src java
+        public class OneValueCache {
+            private final BigInteger lastNumber;
+            private final BigInteger[] lastFactors;
+            
+            public OneValueCache(BigInteger i, BigInteger[] factors) {
+                lastNumber = i;
+                lastFactors = Arrays.copyOf(factors, factors.length);
+            }
+            
+            public BigInteger[] getLastFactors(BigInteger i) {
+                if (lastNumber == null || !lastNumber.equals(i)) {
+                    return null;
+                } else {
+                    return Arrays.copyOf(lastFactors, lastFactors.length);
+                }
+            }
+        }
+      #+end_src
+
 
 
       
