@@ -258,10 +258,135 @@
             }
         }
       #+end_src
-
-      
-
-
+** Thread Confinement
+   + 前面说过, "共享且可变"的函数访问必须需要同步机制, 一个不需要同步的方法说来
+     简单,就是"不要共享", 如果一个变量只被一个线程访问,当然用不到同步机制.
+   + 不共享数据的方法又较thread confinement,是最简单的线程安全的方法.
+   + 一个常见的使用thread confinment来实现线程安全的例子是JDBC(Java Database
+     Connectivity): 在一个服务器端, 一个线程会从connection 池中请求一个connection
+     然后等用完了之后,再换回去,期间不会把这个connection共享给其他线程.所以,通过
+     不共享资源的方法, 实现了线程安全.
+   + 不共享资源的方法不是从java语言的角度来保证的.(前面的JDBC的例子, JDBC的spec
+     没有要求一定要线程安全, 而线程不共享connection是由servlet 和EJB request的
+     结构造成的), 而是要求软件的设计来保证的(当然可以借助本地变量, ThreadLocal类)
+*** Ad-hoc Thread Confinement
+    + 临时性的线程封闭(ad-hoc thread confinement)只是说如果你的代码保证是单线程了
+      才可以使用(比如GUI), 其实不是很鼓励使用
+*** Stack Confinement
+    + stack confinement是thread confinement的一种, 其实就是用local variable来
+      代替全局或者作用域更大的变量.
+    + 之所以叫stack,是因为local variable一般都是存放在stack上的, 而每个thread都有
+      自己的stack, 不和其他thread共享.
+    + stack confinement更易于实现,健壮性也强于ad-hoc thread confinement
+      #+begin_src java
+        import java.util.*;
+        
+        public class Animals {
+            Ark ark;
+            Species species;
+            Gender gender;
+        
+            public int loadTheArk(Collection<Animal> candidates) {
+                SortedSet<Animal> animals;
+                int numPairs = 0;
+                Animal candidate = null;
+        
+                //animals confined to method, don't let them escape!
+                animals = new TreeSet<Animal>(new SpeciesGenderComparator());
+                animals.addAll(candidates);
+        
+                for (Animal a : animals) {
+                    if (candidate == null || !candidate.isPotentialMate(a))
+                        candidate = a;
+                    else {
+                        ark.load(new AnimalPair(candidate, a));
+                        ++numPairs;
+                        candidate = null;
+                    }
+                }
+                return numPairs;
+            }
+            class Animal {
+                Species species;
+                Gender gender;
+        
+                public boolean isPotentialMate(Animal other) {
+                    return species == other.species && gender != other.gender;
+                }
+            }
+        
+            enum Species {
+                AARDVARK, BENGAL_TIGER, CARIBOU, DINGO, ELEPHANT, FROG, GNU, HYENA,
+                IGUANA, JAGUAR, KIWI, LEOPARD, MASTADON, NEWT, OCTOPUS,
+                PIRANHA, QUETZAL, RHINOCEROS, SALAMANDER, THREE_TOED_SLOTH,
+                UNICORN, VIPER, WEREWOLF, XANTHUS_HUMMINBIRD, YAK, ZEBRA
+            }
+        
+            enum Gender {
+                MALE, FEMALE
+            }
+        
+            class AnimalPair {
+                private final Animal one, two;
+        
+                public AnimalPair(Animal one, Animal two) {
+                    this.one = one;
+                    this.two = two;
+                }
+            }
+        
+            class SpeciesGenderComparator implements Comparator<Animal> {
+                public int compare(Animal one, Animal two) {
+                    int speciesCompare = one.species.compareTo(two.species);
+                    return (speciesCompare != 0) ? speciesCompare : one.gender.compareTo(two.gender);
+                }
+            }
+        
+            class Ark {
+                private final Set<AnimalPair> loadedAnimals = new HashSet<AnimalPair>();
+        
+                public void load(AnimalPair pair) {
+                    loadedAnimals.add(pair);
+                }
+            }
+        }
+      #+end_src
+    + 在线程内部使用线程不安全的对象(保证其local)也是可以保证整个线程安全的, 但是要
+      注意:
+      - 这个线程不安全对象只属于这个线程
+      - 这个线程不安全这件事情要文档记录
+*** ThreadLocal
+    + 最正式的保护线程confinement的方法就是ThreadLocal
+    + 其实ThreadLocal这个东西叫做ThreadLocalVariable 更合适, 其实现机制就是为每一个
+      使用该变量的线程提供一个变量值的副本(通过new)
+    + ThreadLocal为每个线程创建了私有的变量, 这个其实就是"用空间换时间", 每个线程
+      都有自己的变量,就不会打架了.
+    + 而同步机制,就是"用时间换空间":只有一份变量,大家排好队依次取用.
+      #+begin_src java
+        public class ConnectionDispenser {
+            static String DB_URL = "jdbc:mysql://localhost/mydatabase";
+        
+            private ThreadLocal<Connection> connectionHolder
+                = new ThreadLocal<Connection>() {
+                public Connection initialValue() {
+                    try {
+                        return DriverManager.getConnection(DB_URL);
+                    } catch (SQLException e) {
+                        throw new RuntimeException("Unable to acquire Connection, e");
+                    }
+                }
+            };
+        
+            public Connection getConnection() {
+                return connectionHolder.get();
+            }
+        }
+        
+      #+end_src
+    + ThreadLocal最开始的初衷就是建立thread confinement的,为每个线程创建一份自己
+      的数据,所以不要在其他方面滥用
+** Immutability
+   + 
 
 
       
