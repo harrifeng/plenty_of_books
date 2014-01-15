@@ -147,7 +147,122 @@
       2) 这个变量不涉及其他变量的"不变式"(invariants)
       3) 没有任何理由要为访问此变量加锁
 ** Publication and Escape
-   + 
+   + 发布(publish)一个对象的意思是,扩展某个对象的作用域,让它以前作用域以外的代码
+     能够看到它, 方法有一下:
+     1) 存储一个指向对象的引用reference
+     2) 从一个非私有的函数里面返回某个对象
+     3) 把一个对象当作某个函数的参数
+   + 发布一个内部的state是对封装的妥协,会更加难以保证"不变式"
+   + 发布一个还没有创建好的对象,是对线程安全的妥协
+   + 如果一个对象还没准备好, 就被不小心的发布了,叫做逃逸(escaped)
+   + 最明显的发布方式,就是存储一个对象的引用在public static的变量里面, 这样所有
+     的人都可以通过knownSecrets得到引用然后知道了Secret的所有内容
+     #+begin_src java
+       public static Set<Secret> knownSecrets;
+       
+       public void initialize() {
+           knownSecrets = new HashSet<Secret>();
+       }
+     #+end_src
+   + 通过从非private的函数里面返回值的方式,也容易publish不合适的内容, 比如下面这
+     个例子,通过返回的引用,我可以轻松的改动本来private的值
+     #+begin_src java
+       public class UnsafeStates {
+           public String[] getStates() {
+               return states;
+           }
+       
+           private String[] states = new String[] { "AA", "BB"};
+       
+           public static void main(String[] args) {
+               UnsafeStates us = new UnsafeStates();
+               System.out.println(us.getStates()[0]);
+               us.getStates()[0] = new String("ZZ");
+               System.out.println(us.getStates()[0]);
+           }
+       
+       }
+     #+end_src
+   + 最后一种可能的发布内部state的方法,是返回一个inner class instance的时候,比如
+     下面虽然看似是publish了EventListener, 但是其实EventListener里面含有ref到
+     ThisEscape, 所以其实也同时publish了ThisEscape
+     #+begin_src java
+       public class ThisEscape {
+           public ThisEscape(EventSource source) {
+               source.registerListener(new EventListener() {
+                   @Override
+                   public void onEvent(Event e) {
+                       doSomething(e);
+                   }
+               });
+           }
+       
+           void doSomething(Event e) {
+           }
+       
+           interface EventSource {
+               void registerListener(EventListener e);
+           }
+       
+           interface EventListener {
+               void onEvent(Event e);
+           }
+       
+           interface Event {
+           }
+       }
+     #+end_src
+*** Safte Construction Practices
+    + 上面的例子告诉我们,在ctor里面publish 对象的结果,很可能是publish了一个没有构造
+      好的对象
+    + 一个常见的在构造阶段escape this引用的做法就是在构造函数里面开启线程. 因为构造
+      函数里面this是和其他线程共享的, 所以:
+      - this引用可以作为参数"显示"的传递给线程
+      - this引用也可以"隐性"的被调用,因为Thread是inner class
+    + 从ctor里面调用线程不是错误的关键,关键是不要那么着急. 从构造函数里面调用被重载的
+      函数(比如上面的调用public void onEvent)肯定即不是private,也不是final, 肯定会
+      this引用泄漏.
+    + 如果实在想在构造函数里面注册一个event listenr或者开启一个线程,那么可以选择把构造
+      函数设计成private, 然后用public的工厂方法,如下:
+      #+begin_src java
+        public class SafeListener {
+            private final EventListener listener;
+        
+            private SafeListener() {
+                listener = new EventListener() {
+                    @Override
+                    public void onEvent(Event e) {
+                        doSomething();
+                    }
+                };
+            }
+        
+            public static SafeListener newInstance(EventSource source) {
+                SafeListener safe = new SafeListener();
+                source.registerListener(safe.listener);
+                return safe;
+            }
+        
+            void doSomething() {
+            }
+        
+            interface EventSource {
+                void registerListener(EventListener e);
+            }
+        
+            interface EventListener {
+                void onEvent(Event e);
+            }
+        
+            interface Event {
+            }
+        }
+      #+end_src
+
+      
+
+
+
 
       
 
