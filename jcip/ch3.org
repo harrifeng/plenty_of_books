@@ -451,3 +451,91 @@
       
 
     
+** Safe Publication
+   + 到现在为止,我们的策略主要是"堵":就是不让对象publish,当然就不会有问题
+   + 但是有时候,我们的确要发布一个对象,这个时候就要注意很多问题, 下面的这种简单
+     的把一个指向对象的ref抛到public区域的做法无法保证publish的安全
+     #+begin_src java
+       // Unsafe publication
+       public Holder holder;
+       
+       public void initialize() {
+           holder = new Holder(42);
+       }
+     #+end_src
+   + 这个例子主要的问题是可能会展示给其他线程一个"不完全构造"的对象
+*** Improper Publication: When Good Objects Go Bad
+    + 看下面的例子, 由于没有进行必要的"同步", 一个线程可能开始看到一个值是"过时的",
+      但是紧接着,它有看到了正确的值,这种情况下,会让下面的assertSanity函数抛出
+      AssertionError
+      #+begin_src java
+        public class Holder {
+            private int n;
+            public Holder(int n) {
+                this.n = n;
+            }
+            public void assertSanity() {
+                if (n != n) {
+                    throw new AssertionError("This is statement is false");
+                }
+            }
+        }
+      #+end_src
+    + 不光是我们刚才描述的那些情况,一旦数据在多个线程间共享,而且没有正确的进行同
+      步,那么很多更加奇怪的事情会发生.
+*** Immutable Objects and Initialization Safety
+    + 因为immutable对象如此重要, java虚拟机专门提供了一个保证:"共享的不变量的
+      初始化是安全的"
+    + java虚拟机提供的这一保证特别重要, 它让线程间共享数据有了一个捷径(不使用同
+      步手段的捷径),那就是使用不变对象(不变对象的条件:无法更改的state, 所有域都
+      是final的, prper的创建过程).
+*** Safe Publication Idioms
+    + 如果我们不能使用不变对象,那么就要采用"同步"的手段来保证publish的正确,而且:
+      - 不仅仅要同"步发布(publish)对象"的线程
+      - 还要同步"消费这些发布的对象"的线程
+    + 我们首先讨论的是,如何"消费这些发布的对象"看到"发布的对象":
+      - 最常见的办法:用static initializer来初始化object reference, JVM会在
+        class初始化的时候,就初始化static initializer, 借助于JVM内部的同步机制,
+        这种初始化的方法可以保证安全的发布(publish)对象
+        #+begin_src java
+          public static Holder holder = new Holder(42);
+        #+end_src
+      - 把object reference存储到一个volatile或者AutomicReference里面
+      - 把object reference存储到一个properly constructed对象的final域里面
+      - 把object reference存储到一个被lock很好保护的域里面(比如collection), 
+        这一条举例就是线程A把对象X放入到线程安全的vector里面(或者其他collection), 
+        线程B紧接着从这个vector里面读取对象X,虽然没有任何的"同步"手段,但是我们能
+        保证线程B能够看到准确的X的state
+*** Effectively Immutable Objects
+    + 如果一个对象被某个线程"安全的publish"出来了以后,其他线程就可以看到它的值了.但是
+      还不一定能成功的取得这个值,因为要考虑到其他线程会修改这个对象,那么如果不使用"同步"
+      的话,取得的值是不值得信任
+    + 我们这里首先假设能够保证这个值在安全publish以后,就不再改变了,那么其他线程再取用
+      这个线程的时候,就不需要其他的同步手段了. 这种不是严格医院上的"不变"(不是final修
+      饰的),而是程序业务逻辑上的"不变",导致publish后不需要"同步手段"的情景,我们叫做
+      effectively immutable.
+    + 下面是一个effectively immutable的例子,用一个Map来存储上次登陆的用户,用户对象
+      放入到线程安全的Map中以后,就可以被其他线程看到了.如果我们再能保证这个数据不再改变,
+      那么就可以不使用任何其他的"同步"手段,而达到安全正确取用publish完的数据
+      #+begin_src java
+        public Map<String, Date> lastLogin =
+            Collections.synchronizedMap(new HashMap<String, Date>());
+      #+end_src
+*** Mutable Objects
+    + 如果我们不能保证一个对象在"安全发布"之后保证不更改,那么"安全发布"仅仅能保证其他
+      线程能够看到这个"发布的state", 但是如果他们想使用,那么每次都要加上"同步"来保证
+      取值的正确性. 同步的手段主要是线程安全,或者是锁.
+*** Sharing Objects Safety
+    + 无论合适,你要取得一个对象的reference的时候,你一定要知道你可以对它做什么(下面的问题
+      也是文档中需要积极记录的):
+      - 你需要获得锁,然后访问它么
+      - 你可以更改它的值么,还是仅仅能读取它的值
+    + 在线程间共享对象的方法简单总结如下:
+      - Thread-confined, 每个线程都自己的一份数据
+      - Shared read-only, 只读数据可以在没有锁的情况下被分享. immutable 是只读, 
+        effectively immutable也是只读
+      - Shared thread-safe, 线程安全的对象自己内部就能实现同步,可以不加"同步方法"
+        在线程间共享
+      - Guarded, guarded对象一定要通过特定的锁来访问. guarded对象要么是在其他线程
+        安全对象里面的对象,要么是被特定锁保护的对象.
+
