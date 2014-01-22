@@ -1,0 +1,82 @@
+* chapter 4: Composing Objects
+  + 前面我们学到了如何在底层处理"线程安全"和"同步", 但是我们不希望分析每次内存访
+    问,分析, 然后来保证线程安全, 这一章就来分析如何使用线程安全的component来更加
+    容易的达到整体的线程安全
+** Designing a Thread-safe Class
+   + 虽然我们可以把所有数据写成public,然后通过同步等手段来保证线程安全.但是显然
+     这样太麻烦了,远不如我们合理的利用"封装", 然后保证整个class的线程安全性.
+   + 一个对象的state来源于他的数据域, 如果这些数据都是内置类型(primitive type)
+     的话, 这些数据就构成了整个对象的state.下面的例子中Counter只有一个内置类型
+     的数据,所以这唯一的数据线程安全了,整个对象就线程安全了.
+     #+begin_src java
+       @ThreadSafe
+       public final class Counter {
+           @GuardedBy("this") private long value = 0;
+       
+           public synchronized long getValue() {
+               return value;
+           }
+           public synchronized long increment() {
+               if (value == long.MAX_VALUE) {
+                   throw new illegalStateException("counter overflow");
+               }
+               return ++value;
+           }
+       }
+     #+end_src
+   + 如果对象有多个数据域,那么肯定对象的state是和多个值相关的
+   + 如果对象含有指向其他对象的域, 那么对象的state是和这些域都相关的.比如如果一个
+     LinkedList包含很多node,那么他的state就包括这些node的state
+*** Gathering Synchronization Requirements
+    + 保证一个class的线程安全,其实就是保证在多个线程访问的情况下, 保证class的"不
+      变性": 这个不变性,需要我们对state加以控制:
+      - 这个state越小,越容易控制
+      - 这就是为什么immutable 对象更容易控制,因为它只有一种state
+    + 上面的例子中, Counter的唯一一个域是value, 它是long, 取值范围是Long.MIN_VALUE
+      和Long.MAX_VALUE. 但是因为是counter,所以负数是不合法的
+    + 同样的,一些操作可以通过post-condition来判断现在的state是不是合法的, 比如
+      当前的counter是17,那么下一个唯一合法的数字是18.
+    + 如果下一个state一定要来自于当前的state, 那么这种操作就必须是compound action(概
+      念来自第二章:我们把check-then-act和read-modify-write这种必须通过原子性来保证线
+      程安全的操作叫做compound action)
+    + 并不是所有的操作都有要求和前一个state相关,比如测量当前的温度.就更上一次的温度没有
+      关系
+    + 总结起来,如果遇到一下两种情况,那么一定要有"同步"来规划他们,如果没有下面两种情况,
+      那么你可以选择不使用"同步"来获得效率的提升:
+      - 数据的更新要依靠前一个state
+      - 数据在更新的时候,可能会暂时的数据变成invalid
+    + 一个class可能会有多个的变量,然后他们共同维护一个不变式,比如一个Range类,有个最大
+      值,有个最小值. 你对最大值操作的时候,最小值也要一块加锁.不然的话你可能会在某个时段
+      处于"invalid"的状态: 所有关联的变量都在加锁的考虑范围内
+*** State-dependent Operations
+    + 很多时候,某个对象存在一种叫做state-based的 precondition. 比如,一个队列里面必须
+      要有值,你才能从里面取值. 这个队列"非空"就是取值的precondition. 而需要precondition
+      的操作就叫做state-depdent.
+    + 在单线程的程序中,如果precondition没有达到,那么相应的操作一定会失败的.但是在多线程
+      程序中,我们可以提供另外的选择,因为同一时段可能有其他线程放入数据,我们可以选择等一会
+      等有数据了再取.
+    + 选择"等到有数据了通知我"的策略是和内置锁紧密联系的,非常难以实现.我们推荐使用已有的
+      库函数里面的类.比如BlockingQueue, Semaphore.
+*** State Ownership
+    + 当我们要定义哪些变量组成对象的state的时候,我们只考虑了对象自己的数据."所有权(Ownership)"
+      这个概念,不是存在于语言里面的,而是一种class的设计.当你创建了一个HashMap的时候,你就
+      创建了多个对象: HashMap对象, 很多Map.Entry对象. 从逻辑上来讲,不止HashMap对象,其他
+      的Entry对象也是state的一个部分
+    + Java由于有GC的存在,我们很少去考虑"所有权"的问题了. 在java中一个对象封装了state,并且
+      拥有这个state. 只有你"拥有"这个state,你才能来决定应该采取怎样的同步策略.因为"拥有权"
+      就意味着"控制权"
+    + 但是,如果一旦你把一个reference发布出去,给了一个mutable的对象,那么那就没有"独享"的
+      所有权,以及控制权了.
+    + 另外,一般来说,一个类对它的ctor的参数是没有所有权的,对它的内部函数的参数传入变量也是
+      没有所有权的.
+    + Collection class经常出现所谓的"split ownership", 因为collection拥有collection
+      自己的state, 用户代码拥有collection里面的对象的state.
+    + 一个"split ownership"的例子就是servlet框架里面ServletContext, 它提供了一个类似Map
+      的容器对象. 因为ServletContext会被多个线程同时访问.当Servlet需要从ServletContext
+      里面取得数据的时候,就一定要使用"同步方法"了,因为ServletContext里面的对象是application
+      拥有的. 所以访问他们的是application众多的线程.在使用的时候,还是要做到:
+      - 要么object本身就是thread-safe
+      - 要么object是immutable
+      - 要么object被锁保护.
+      
+
