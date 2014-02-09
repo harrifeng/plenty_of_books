@@ -79,7 +79,6 @@
       - 要么object是immutable
       - 要么object被锁保护.
       
-
 ** Instance Confinement
    + 即便一个对象不是线程安全的,你也可以通过加一层外衣的方式,让它在多线程的环境
      中安全的运行:
@@ -90,4 +89,30 @@
      已知的.这样的话,比起把数据放到全局(谁都能访问)来说,更容易分析.
    + 把confinement(也就封装)和locking机制有效的结合,可以保证一个线程不安全的
      对象能够安全的在多线程环境中运行
-
+*** The Java Monitor Pattern
+    + 引入一个新的概念叫做Java monitor pattern: 如果一个对象封装了其所有的
+      mutable state,并且用内部的锁保护这些mutable state,那么我们就说这个
+      对象满足了Java monitor pattern的要求. 下面是一个例子:
+      #+begin_src java
+        public class PrivateLock {
+            private final object myLock = new Object();
+            @GuardedBy("myLock") Widget widget;
+        
+            void someMethod() {
+                synchronized(myLock) {
+                    // Access or modify the state of widget
+                }
+            }
+        }
+      #+end_src
+    + Java monitor pattern中的封装要求不难理解,其特点是使用私有(private)的锁来保
+      护state, 这样有很多好处:
+      - 使用了私有的锁,那么使用它的client代码就无法获得它的锁, 这很重要. 因为一旦
+        client代码可以获得对象的锁的话,那么它就可以参与到"同步"过程中,参与的过程,
+        就有可能引入错误(liveness problem)
+      - 就算是不引入错误,使用publicly accessible的锁,也意味着对整个系统的分析,而不
+        仅仅是一个小的class
+*** Example: Tracking Fleet Vehicles
+    + 
+        
+      
