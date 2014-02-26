@@ -1,0 +1,67 @@
+#+TITLE: Part 1: learning the Shell
+* What is the shell
+  + 当我们说到command line的时候,我们其实是说的shell. shell是一个从键盘接受信息
+    传递给操作系统的程序.Linux默认的shell是bash
+** Terminal Emulators
+   + 如果我们使用GUI界面的话,我们还要使用terminal emulator来和shell进行联系.KDE
+     里面使用的是konsole, GNOME使用的是gnome-terminal
+** Your First keystrokes
+   + 打开terminal emulator,应该是如下这个样子的
+     #+begin_src sh
+       lvtest@auto-inst:~$ 
+     #+end_src
+   + $(dollar sign)代表一般用户, #(hash mark)代表超级用户.
+*** Command History
+    + 上下键可以选择上一条下一条命令,一遍最少会保存500条历史
+*** Cursor Movement
+    + 左右键,可以让光标左右移动
+** Try Some Simple Commands
+   + date是日期命令
+     #+begin_src sh
+       lvtest@auto-inst:~$ date
+       Wed Feb 26 16:13:11 CST 2014
+     #+end_src
+   + cal是日历命令
+     #+begin_src sh
+       lvtest@auto-inst:~$ cal
+          February 2014      
+       Su Mo Tu We Th Fr Sa  
+                          1  
+        2  3  4  5  6  7  8  
+        9 10 11 12 13 14 15  
+       16 17 18 19 20 21 22  
+       23 24 25 26 27 28     
+     #+end_src
+   + df可以查看当前驱动器下面的剩余空间
+     #+begin_src sh
+       lvtest@auto-inst:~$ df
+       Filesystem     1K-blocks    Used Available Use% Mounted on
+       /dev/sda1       40120704 1944148  36131884   6% /
+       none                   4       0         4   0% /sys/fs/cgroup
+       udev              496420       4    496416   1% /dev
+       tmpfs             101188     296    100892   1% /run
+       none                5120       0      5120   0% /run/lock
+       none              505932       0    505932   0% /run/shm
+       none              102400       0    102400   0% /run/user
+     #+end_src
+   + free产科内存的剩余
+     #+begin_src sh
+       lvtest@auto-inst:~$ free
+                    total       used       free     shared    buffers     cached
+       Mem:       1011868     227332     784536          0      21464      78256
+       -/+ buffers/cache:     127612     884256
+       Swap:      1046524          0    1046524
+     #+end_src
+** Ending a Terminal Session
+   + 我们使用exit来结束一个terminal session
+   + 除了我们上面说的terminal emulator, Linux还会在GUI的背后运行一些terminal 
+     session.叫做virtual terminal,我们可以通过CTRL+ALT+F1~F6来调用,返回GUI
+     桌面使用ALT-F7
+* Navigation
+** Understanding the Filesystem Tree
+   + 和windows一样,linux也是采用了树形结构的文件系统.第一个文件夹叫做root 文件夹(/)
+   + 和windows不一样的是:windows为每一个分区准备了一个单独的"文件系统树", 对于Linux
+     来说,无论有多少设备,都只有一套"文件系统树", 额外的设备是通过"mount"的形式来放在
+     某个文件夹下面的
+** The Current Working Directory     
+     
