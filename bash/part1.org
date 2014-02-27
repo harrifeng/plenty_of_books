@@ -156,14 +156,138 @@
         drwxrwxr-x 3 lvtest lvtest 4096 Feb 21 16:33 tmp
       #+end_src
     + 下面就来总结一下ls的参数
-      | Option | Long Option | Description                                   |
-      |--------+-------------+-----------------------------------------------|
-      | -a     | --all       | List all files, even hidden files             |
-      | -d     | --directory | if No -d dpecified, ls will list the contents |
-      |        |             | of directory. with -d, ls will list the       |
-      |        |             | directory itself                              |
-      | -F     | --classify  |                                               |
+      | Option | Long Option      | Description                                    |
+      |--------+------------------+------------------------------------------------|
+      | -a     | --all            | List all files, even hidden files              |
+      | -d     | --directory      | if No -d dpecified, ls will list the contents  |
+      |        |                  | of directory. with -d, ls will list the        |
+      |        |                  | directory itself                               |
+      | -F     | --classify       | This option will append an indicator character |
+      |        |                  | to the end of each listed name(for example, a  |
+      |        |                  | forward slash for directory)                   |
+      | -h     | --human-readable | in long format listing(with -l), display the   |
+      |        |                  | sizes in human-readable format rather than in  |
+      |        |                  | bytes                                          |
+      | -l     |                  | Display result in long format                  |
+      | -r     | --reverse        | Display the results in reverse order           |
+      | -S     |                  | Sort result by file size                       |
+      | -t     |                  | Sort by modification time                      |
+*** A Longer Look at Long Format
+    + 下面是一个long listing的例子
+      #+begin_src sh
+        lvtest@auto-inst:~/tmp$ ls -l
+        total 24
+        -rwxrwxr-x  1 lvtest lvtest 8522 Feb 21 16:33 a.out
+        -rw-rw-r--  1 lvtest lvtest  222 Feb 21 16:33 printf.c
+        -rw-rw-r--  1 lvtest lvtest 1042 Feb 19 18:09 testsig.c
+        drwxrwxr-x 40 lvtest lvtest 4096 Feb 20 16:48 unpbook
+      #+end_src
+    + 我们以最后一行来分析long listing
+      | Field        | Meaning                                                        |
+      | drwxrwxr-x   | first character indicates the type fo file. "-"-> regular file |
+      |              | "d"-> directory next three characters"rwx"->access rights for  |
+      |              | file's owner, next three characters"rwx"->access rights for    |
+      |              | file's group, final thress"r-x" for everyone else              |
+      | 40           | File's number of hard links                                    |
+      | lvtest       | The user naemfo the file's owner                               |
+      | lvtest       | The name of the group that owns the file                       |
+      | 4096         | Size of the file in bytes                                      |
+      | Feb 20 16:48 | Date and time of the file's last modification                  |
+      | unpbook      | Name of the file                                               | 
+** Determining a File's Type with file
+   + 我们可以用file命令来判断文件类型
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp$ file printf.c
+       printf.c: C source, ASCII text
+     #+end_src
+** Viewing File contents with less
+   + 我们可以使用less来查看text类型的文件, 期间所有的操作和VI一样!, 可以按h来查
+     看帮助
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp$ less printf.c 
+       WARNING: terminal is not fully functional
+       printf.c  (press RETURN)
+       #include <stdio.h>
+       
+       int main(int argc, char *argv[])
+       {
+           int ii = 0x01020304;
+           int i = 0;
+           char* ptr = &ii;
+           for (i = 0; i < 4; i++) {
+               printf("%x\n", *ptr);
+               ptr++;
+           }
+               
+           return 0;
+       }
+       printf.c (END)
+     #+end_src
+** A Guided Tour
+   + 我们在移动位置的时候,有很多时候要用到绝对路径,下面就是一些绝对路径的意义
+     | Directory     | Comments                                                         |
+     | //            | The root directory, where everything begins                      |
+     | /bin          | Contains binaries must be present for system to boot and run     |
+     | /boot         | Contains Linux Kernel, initial RAM disk image                    |
+     |               | /boot/grub/grub.conf->used to configure the boot loader          |
+     |               | /boot/vmlinuz, the Linux kernel                                  |
+     | /dev          | Contains device nodes, nodes are also file                       |
+     | /etc          | Contains system-wide configuration files                         |
+     |               | /etc/crontab->defines when automated job will run                |
+     |               | /etc/fstab->a table of storage devices and their associated      |
+     |               | mount points                                                     |
+     |               | /etc/passwd, a list of the user accounts                         |
+     | /home         | Every user has one directory in /home                            |
+     | /lib          | Contains shared library files used by the core system programs,  |
+     |               | like the DLLs in Windows                                         |
+     | /lost+found   | Unless somethign really bad has happened to your system, this    |
+     |               | directory will reman empty                                       |
+     | /media        | On modern Linux system, it will contain the mount pionts for     |
+     |               | removable media such as USB, CD-ROM, that are mounted            |
+     |               | automatically at insertion                                       |
+     | /mnt          | On older Linux systems, /mnt directory conatins mount points     |
+     |               | for removable devices that habe been mounted manually            |
+     | /opt          | The /opt directory is used to install "optional" software        |
+     | /proc         | /proc is not a real filesystem. it is a virtual filesystem       |
+     |               | maintained by the Linx kernel. The files are readable and will   |
+     |               | give you a picture of how the kernel sees your computer          |
+     | /root         | home directory for the root account                              |
+     | /sbin         | This directory conains "system" binaries. These are programs     |
+     |               | that perform vital system tasks that are generally reserved      |
+     |               | for the superuser                                                |
+     | /tmp          | Intended for staorage of temporary, transient files.             |
+     | /usr          | This directory is likely the largest one on a Linux system. It   |
+     |               | contains all the programs and support files used by regular      |
+     |               | users                                                            |
+     | /usr/bin      | containst the executable programs installed by your Linux        |
+     |               | distribution. It is common for this directory to hold thousands  |
+     |               | of programs                                                      |
+     | /usr/lib      | The shared libraries for the programs in /usr/bin                |
+     | /usr/local    | The /usr/local tree is where programs that are not included with |
+     |               | your distribution but are intended for system-wide use are       |
+     |               | installed. Programs compiled from source code are normally       |
+     |               | installed in /usr/local/bin                                      |
+     | /usr/sbin     | Contains more system administration programs                     |
+     | /usr/share    | /usr/share contains all the shared data used by  programs in     |
+     |               | /usr/bin. This includes things like defult configuration files,  |
+     |               | icons, screen backgrounds, sound files, etc                      |
+     | /usr/share/oc | Most packages installed on the system will include some kind of  |
+     |               | documentation files organized by package                         |
+     | /var          | With the exception of /tmp and /home, the directories we showd   |
+     |               | here keep their content static, in other words, their contents   |
+     |               | are not changed. /var directory tree is where data that is       |
+     |               | likely to chagne is stored. Various databases, spoll files, user |
+     |               | mail, for example                                                |
+     | /val/log      | /var/log contains log files, records of various sytem activity.  |
+     |               | The most useful one is /var/log/messages, in some system, only   |
+     |               | superuser can view log file                                      | 
+*** Symbolic Links
+    + 在ls 的long format里面,如果第一个不是"-"或者"d", 而是"l"的话,就是symbolic links
+      #+begin_src sh
+        lrwxrwxrwx  1 root root    17 Feb 20  2013 libip4tc.so.0 -> libip4tc.so.0.0.0
+      #+end_src
+
+
 
      
-
 
