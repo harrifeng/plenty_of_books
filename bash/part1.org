@@ -64,4 +64,106 @@
      来说,无论有多少设备,都只有一套"文件系统树", 额外的设备是通过"mount"的形式来放在
      某个文件夹下面的
 ** The Current Working Directory     
+   + 我们的shell当前无论如何都会在某个文件夹下,使用pwd来表示
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp$ pwd
+       /home/lvtest/tmp
+     #+end_src
+** Listing the Contents of a Directory
+   + 当前文件夹下的内容使用ls
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp$ ls
+       a.out  printf.c  testsig.c  unpbook
+     #+end_src
+** Changing the Current Working Directory
+*** Absolute pathnames
+    + 我们使用以"/"开头的绝对文件路名来cd到相应文件夹
+      #+begin_src sh
+        lvtest@auto-inst:~/tmp$ cd /usr/bin
+        lvtest@auto-inst:/usr/bin$ pwd
+        /usr/bin
+      #+end_src
+*** Relative Pathnames      
+    + 相对路径就是从pwd开始如何找到下一级,其中"."是当前文件夹".."是上层文件夹
+      #+begin_src sh
+        lvtest@auto-inst:/usr$ pwd
+        /usr
+        lvtest@auto-inst:/usr$ cd ./bin
+        lvtest@auto-inst:/usr/bin$ pwd
+        /usr/bin
+      #+end_src
+*** Some helpful Shortcuts
+    + 一些有用的cd快捷键
+      | Shortcut     | Result                                                |
+      |--------------+-------------------------------------------------------|
+      | cd           | Changes the working directory to your home directory  |
+      | cd -         | Changes the working directory to the previous working |
+      |              | directory                                             |
+      | cd ~username | Changes the working directory to the home directory   |
+      |              | of theusername.                                       |
+      #+begin_src sh
+        lvtest@auto-inst:/usr/bin$ pwd
+        /usr/bin
+        lvtest@auto-inst:/usr/bin$ cd 
+        lvtest@auto-inst:~$ pwd
+        /home/lvtest
+        lvtest@auto-inst:~$ cd -
+        /usr/bin
+        lvtest@auto-inst:/usr/bin$ pwd
+        /usr/bin
+        lvtest@auto-inst:/usr/bin$ cd ~lvtest
+        lvtest@auto-inst:~$ pwd
+        /home/lvtest
+      #+end_src
+* Exploring The System
+** More Fun with ls
+   + ls 不仅仅可以列出当前文件夹的内容,还可以列出其他文件夹的内容,甚至多个文件夹的内容
+     #+begin_src sh
+       lvtest@auto-inst:~$ ls /usr
+       bin  games  include  lib  local  sbin  share  src
+       lvtest@auto-inst:~$ ls ~ /usr
+       /home/lvtest:
+       authorized_keys  backupssh  test  tmp
+       
+       /usr:
+       bin  games  include  lib  local  sbin  share  src
+     #+end_src
+*** Options and Arguments
+    + 我们的命令都是由如下三部分组成的
+      #+begin_example
+        command -options arguments      
+      #+end_example
+    + ls就支持-l这种"单字母"参数,而且单字母参数可以写在一块,效果叠加,还支持通过
+      "--"来增加long options
+      #+begin_src sh
+        lvtest@auto-inst:~$ ls -l
+        total 16
+        -rwx------ 1 lvtest lvtest  802 Oct 24 15:05 authorized_keys
+        drwx------ 2 lvtest lvtest 4096 Oct 24 15:05 backupssh
+        drwxrwxr-x 3 lvtest lvtest 4096 Oct 24 16:45 test
+        drwxrwxr-x 3 lvtest lvtest 4096 Feb 21 16:33 tmp
+        lvtest@auto-inst:~$ ls -lt
+        total 16
+        drwxrwxr-x 3 lvtest lvtest 4096 Feb 21 16:33 tmp
+        drwxrwxr-x 3 lvtest lvtest 4096 Oct 24 16:45 test
+        -rwx------ 1 lvtest lvtest  802 Oct 24 15:05 authorized_keys
+        drwx------ 2 lvtest lvtest 4096 Oct 24 15:05 backupssh
+        lvtest@auto-inst:~$ ls -lt --reverse
+        total 16
+        drwx------ 2 lvtest lvtest 4096 Oct 24 15:05 backupssh
+        -rwx------ 1 lvtest lvtest  802 Oct 24 15:05 authorized_keys
+        drwxrwxr-x 3 lvtest lvtest 4096 Oct 24 16:45 test
+        drwxrwxr-x 3 lvtest lvtest 4096 Feb 21 16:33 tmp
+      #+end_src
+    + 下面就来总结一下ls的参数
+      | Option | Long Option | Description                                   |
+      |--------+-------------+-----------------------------------------------|
+      | -a     | --all       | List all files, even hidden files             |
+      | -d     | --directory | if No -d dpecified, ls will list the contents |
+      |        |             | of directory. with -d, ls will list the       |
+      |        |             | directory itself                              |
+      | -F     | --classify  |                                               |
+
      
+
+
