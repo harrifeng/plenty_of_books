@@ -1,5 +1,5 @@
-#+OPTIONS:^:{}
-* Chapter 2: The Transport Layer: TCP, UPD, and SCTP
+#+TITLE: Chapter 2
+* The Transport Layer: TCP, UPD, and SCTP
 ** Introduction
 ** The Big Picture
    + tcpdump: 是一个直接与datalink沟通的工具, Linux下面其实还有一种socket与
@@ -53,18 +53,62 @@
      5) 因为 2,3,4三步中要有三个segment才能完成连接的建立,所以这个过程叫做三次握手
    + 三次握手图解, 我们可以看到ACK返回的是J+1这是因为SYN本身会占用一个序列号, J是当前
      序列号,那么等连接建立,下次发送的就是J+1了
-     #+begin_example
-                      client                       server
-          socket()      |      SYN(J)                |socket(), bind(), listen()
-                        |                            |
-       connect() blocks +--------------------------->|accept() blocks
-                        |    SYN(K), ACK(J+1)      / |
-       connect() returns|<-------------------------/ |
-                        |\    ACK(K+1)               |
-                        | \------------------------->|accept() returns
-                        |                            |read() blocks
-                        |                            |
-     #+end_example
+     #+begin_src dot :file ../../static/images/unp_threeway.png :cmdline -Kfdp -n -Tpng
+       digraph g {
+           node [fontname="Monaco, Consolas",shape =plaintext,height=.1];
+           
+           node_c [
+                   pin = true,
+                   pos = "0, 0!",
+                   label = <
+                   <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                   <TR><TD>Client</TD><TD> </TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD>socket</TD><TD>|</TD></TR>
+                   <TR><TD>connect(blocks)</TD><TD PORT="f0">|</TD></TR>
+                   <TR><TD>(active open)</TD><TD>|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD>connect returns</TD><TD PORT="f1">|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   <TR><TD></TD><TD>|</TD></TR>
+                   </TABLE>
+                   >
+                   ];
+       
+           node_s [
+                   pin = true,
+                   pos = "5, 0!",
+                   label = <
+                   <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                   <TR><TD> </TD><TD>Server</TD></TR>
+                   <TR><TD>|</TD><TD></TD></TR>
+                   <TR><TD>|</TD><TD></TD></TR>
+                   <TR><TD>|</TD><TD>socket, bind, listen</TD></TR>
+                   <TR><TD PORT="f0">|</TD><TD>(passive open)</TD></TR>
+                   <TR><TD>|</TD><TD>accept(blocks)</TD></TR>
+                   <TR><TD>|</TD><TD></TD></TR>
+                   <TR><TD>|</TD><TD></TD></TR>
+                   <TR><TD>|</TD><TD></TD></TR>
+                   <TR><TD PORT="f1">|</TD><TD>accept returns</TD></TR>
+                   <TR><TD>|</TD><TD>read(blocks)</TD></TR>
+                   <TR><TD>|</TD><TD></TD></TR>
+                   </TABLE>
+                   >
+                   ];
+       
+           "node_c":f0 -> "node_s":f0 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                       shape =plaintext,height=.1,label="SYN J"]
+           "node_s":f0 -> "node_c":f1 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                       shape =plaintext,height=.1,label="SYN K, ACK J+1"]
+           "node_c":f1 -> "node_s":f1 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                       shape =plaintext,height=.1,label="ACK K+1"]
+       }
+     #+end_src
+
 *** TCP Options
     + MSS: 在传输SYN的同时,发送自己的最大segment的大小(Maximum Segment Size)
     + Windows scale: TCP向对方展示的最大窗口数目为65535(相应的头部只有16bit), 但是
@@ -89,23 +133,67 @@
       - 上面2和3之间, 被动关闭的那一端还是可以传数据给主动关闭那一端的,只是反过来不行了,
         这个叫做半关闭(half close)
     + TCP四次挥手图解(close()可以释放FIN,同时exit或者非正常中断也会发送)
-      #+begin_example
-                       client                       server
+      #+begin_src dot :file ../../static/images/unp_fourway.png :cmdline -Kfdp -n -Tpng
+        digraph g {
+            node [fontname="Monaco, Consolas",shape =plaintext,height=.1];
+            
+            node_c [
+                    pin = true,
+                    pos = "0, 0!",
+                    label = <
+                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                    <TR><TD>Client</TD><TD> </TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>close</TD><TD PORT="f0">|</TD></TR>
+                    <TR><TD>(active close)</TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD PORT="f1">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD PORT="f2">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    </TABLE>
+                    >
+                    ];
+        
+            node_s [
+                    pin = true,
+                    pos = "5, 0!",
+                    label = <
+                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                    <TR><TD> </TD><TD>Server</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD>(passive close)</TD></TR>
+                    <TR><TD PORT="f0">|</TD><TD>read returns 0</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f1">|</TD><TD>close</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f2">|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    </TABLE>
+                    >
+                    ];
+        
+            "node_c":f0 -> "node_s":f0 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="FIN M"]
+            "node_s":f0 -> "node_c":f1 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="ACK M+1"]
+            "node_s":f1 -> "node_c":f2 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="FIN N"]
 
-                         |    FIN(M)                  |
-              close()    +--------------------------->|read() return 0 (eof)
-                         |    ACK(M+1)              / |
-        connect() returns|<-------------------------/ |
-                                   ........
-
-                         |    FIN(N)                  |
-                         |<---------------------------+close()
-                         |\    ACK(N+1)               |
-                         | \------------------------->|
-                         |                            |
-                         |                            |
-
-      #+end_example
+            "node_c":f2 -> "node_s":f2 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="ACK N+1"]
+        }
+     #+end_src      
 *** TCP State Transitiion Diagram
     + 如下的为TCP的状态转换图---为客户端,===为服务器端
       #+begin_example
@@ -148,41 +236,131 @@
       - 同时关闭(simulataneous close): 两端几乎同时发送FIN
 *** Watcing the Packets
     + 我们把客户端和服务器都在一起考虑,就会得到下面的图例
-      #+begin_example
-                            Client                               Server
-              connect(blocks) | SYN(j), MSS=536                     | LISTEN(passive open), accept(blocks)
-        SYN_SENT(active open) +------------------------------------>+ SYN_RCVD
-                              |                                    /|
-                              | SYN(K), ACK(J+1), MSS=1460        / |
-            ESTABLISHED       +<---------------------------------+  |
-            connect returns   | \                                   |
-                              |  \   ACK(K+1)                       |
-                              |   +-------------------------------->+ ESTABLISHED, accept returns, read (blocks)
-                              |                                     |
-                              |       data(request)                 |
-                      write   +------------------------------------>+ read returns
-                read(blocks)  |                                    [server process request]
-                              |                                     |
-                              |                                     +
-                              |                                    /|write, read(blocks)
-                              |    data(reply), ACK of request    / |
-                read returns  +<---------------------------------+  |
-                              |\                                    |
-                              | \  ACK of reply                     |
-                              |  +--------------------------------->+
+      #+begin_src dot :file ../../static/images/unp_three_four_way.png :cmdline -Kfdp -n -Tpng
+        digraph g {
+            node [fontname="Monaco, Consolas",shape =plaintext,height=.1];
+            
+            node_c [
+                    pin = true,
+                    pos = "0, 0!",
+                    label = <
+                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                    <TR><TD>Client</TD><TD></TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>connect(blocks)</TD><TD>|</TD></TR>
+                    <TR><TD>SYN_SENT(active open)</TD><TD PORT="f0">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>ESTABLISH</TD><TD PORT="f1">|</TD></TR>
+                    <TR><TD>connect returns</TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>write</TD><TD PORT="f2">|</TD></TR>
+                    <TR><TD>read(blocks)</TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>read returns</TD><TD PORT="f3">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>close</TD><TD>|</TD></TR>
+                    <TR><TD>(active close)FIN_WAIT_1</TD><TD PORT="f4">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>FIN_WAIT_2</TD><TD PORT="f5">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD>TIME_WAIT</TD><TD PORT="f6">|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    <TR><TD></TD><TD>|</TD></TR>
+                    </TABLE>
+                    >
+                    ];
+        
+            node_s [
+                    pin = true,
+                    pos = "8, 0!",
+                    label = <
+                    <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">
+                    <TR><TD> </TD><TD>Server</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD>socked, bind, listen</TD></TR>
+                    <TR><TD>|</TD><TD>LISTEN(passive open)</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD>accept (blocks)</TD></TR>
+                    <TR><TD PORT="f0">|</TD><TD>SYN_RCVD</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f1">|</TD><TD>ESTABLISHED</TD></TR>
+                    <TR><TD>|</TD><TD>accept returns</TD></TR>
+                    <TR><TD>|</TD><TD>read(blocks)</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f2">|</TD><TD>read returns</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f3">|</TD><TD>write</TD></TR>
+                    <TR><TD>|</TD><TD>read(blocks)</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f4">|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f5">|</TD><TD>CLOSE_WAIT(passive close)</TD></TR>
+                    <TR><TD>|</TD><TD>read returns 0</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD>close</TD></TR>
+                    <TR><TD PORT="f6">|</TD><TD>LAST_ACK</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    <TR><TD PORT="f7">|</TD><TD>CLOSED</TD></TR>
+                    <TR><TD>|</TD><TD></TD></TR>
+                    </TABLE>
+                    >
+                    ];
+        
+            "node_c":f0 -> "node_s":f0 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="SYNJ, MSS=536"]
+            "node_s":f0 -> "node_c":f1 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="SYN K, ACK J+1,MSS=1460"]
+            "node_c":f1 -> "node_s":f1 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="ACK K+1"]
+            "node_c":f2 -> "node_s":f2 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="data(request)"]
+            "node_s":f3 -> "node_c":f3 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="data(reply),ACK of request"]
+            "node_c":f3 -> "node_s":f4 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="ACK of reply"]
+            "node_c":f4 -> "node_s":f5 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="FIN M"]
+            "node_s":f5 -> "node_c":f5 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="ACK M+1"]
+            "node_s":f6 -> "node_c":f6 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="FIN N"]
+            "node_c":f6 -> "node_s":f7 [fontname="Monaco, Consolas",fontcolor="Blue",
+                                        shape =plaintext,height=.1,label="ACK N+1"]
 
-                              |    FIN(M)                           |
-           close   FIN_WAIT_1 +------------------------------------>+ CLOSE_WAIT (passive close), read returns 0
-                              |                                    /|
-                              |    ACK(M+1)                       / |
-                   FIN_WAIT_2 +<---------------------------------+  |
-                              |                                     |
-                              |    FIN(N)                           |
-                   TIME_WAIT  +<------------------------------------+ close,LAST_ACK
-                              |\                                    |
-                              | \  ACK(N+1)                         |
-                              |  +--------------------------------->+ CLOSED
-      #+end_example
+
+
+        }
+      #+end_src            
     + 客户端的MSS是536,而服务器是1460, 两边的窗口不一样大是没问题的
     + 上面传输数据的时候,服务器的对客户端数据请求的应答,是和数据一块传给客户端的
       ,这个叫做piggybacking(捎带应答), 这个是因为server在200ms以内就处理了请求,
@@ -205,9 +383,3 @@
      2) 我们上一节说道了主动close的客户端会保留TIME_WAIT长达2MS的时间,因为如果
         最后一个ACK(N+1)丢失了的话,server端超市会重发FIN(N), 客户端要保证自己
         还在这个connection, 然后重新发送ACK(N+1)
-** SCTP Association Establishment and Termination
-** Port Number
-** TCP Port Numbers and Concurrent Servers
-** Buffer Sizes and Limitations
-** Standard Internet Services
-** Protocol Usage by Common Internet Applications

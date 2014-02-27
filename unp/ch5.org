@@ -1,0 +1,676 @@
+#+TITLE: Chapter 5
+** Introduction
+   + 这一章我们主要讲一个echo server的例子, 所谓echo several就是:
+     1) client从标准输入读取一行话, 然后把这段话发给server
+     2) server从网络上读取这段话,然后原封不动的传给client
+     3) client收到话以后再传给标准输出
+** TCP Echo Server: main Function
+   + 下面就是我们server的main函数
+     #+begin_src c
+       #include   "unp.h"
+
+       int
+       main(int argc, char **argv) {
+           int         listenfd, connfd;
+           pid_t       childpid;
+           socklen_t   clilen;
+           struct sockaddr_in cliaddr, servaddr;
+
+           listenfd = Socket(AF_INET, SOCK_STREAM, 0);
+
+           bzero(&servaddr, sizeof(servaddr));
+           servaddr.sin_family = AF_INET;
+           servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+           servaddr.sin_port = htons(SERV_PORT);
+
+           Bind(listenfd, (SA*)&servaddr, sizeof(servaddr));
+
+           Listen(listenfd, LISTENQ);
+
+           for (; ;) {
+               clilen = sizeof(cliaddr);
+               connfd = Accept(listenfd, (SA*)&cliaddr, &clilen);
+
+               if ((childpid = Fork()) == 0) { /* child process */
+                   Close(listenfd);            /* close listening socket */
+                   str_echo(connfd);           /* process the request */
+                   exit(0);
+               }
+               Close(connfd);                  /* parent closes connected socket */
+           }
+       }
+     #+end_src
+** TCP Echo Server: str_echo Function
+   + 具体的问题,是在str_echo里面处理的.
+     #+begin_src c
+       #include   "unp.h"
+
+       void
+       str_echo(int sockfd) {
+           ssize_t    n;
+           char       buf[MAXLINE];
+
+       again:
+           while ((n = read(sockfd, buf, MAXLINE)) > 0) {
+               Writen(sockfd, buf, n);
+           }
+
+           if (n < 0 && errno == EINTR) {
+               goto again;
+           } else if (n < 0) {
+               err_sys("str_echo: read error");
+           }
+       }
+     #+end_src
+** TCP Echo Client: main Function
+   + client端的代码如下
+     #+begin_src c
+       #include "unp.h"
+
+       int main(int argc, char **argv) {
+           int        sockfd;
+           struct sockaddr_in servaddr;
+
+           if (argc != 2) {
+               err_quit("usage: tcp cli <IPaddress>");
+           }
+           sockfd = Socket(AF_INET, SOCK_STREAM, 0);
+
+           bzero(&servaddr, sizeof(servaddr));
+           servaddr.sin_family = AF_INET;
+           servaddr.sin_port = htons(SERV_PORT);
+           Inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
+
+           Connect(sockfd, (SA*) &servaddr, sizeof(servaddr));
+
+           str_cli(stdin, sockfd);    /* do it all */
+           exit(0);
+       }
+     #+end_src
+** TCP Echo Client: str_cli Function
+   + client main里面除了socket以外的实际工作都是在str_cli里面完成的
+     #+begin_src c
+       #include    "unp.h"
+
+       void str_cli(FILE *fp, int sockfd) {
+           char         sendline[MAXLINE], recvline[MAXLINE];
+
+           while (Fgets(sendline, MAXLINE, fp) != NULL) {
+               Writen(sockfd, sendline, strlen(sendline));
+
+               if (Readline(sockfd, recvline, MAXLINE) == 0) {
+                   err_quit("str_cli: server terminated permaturely");
+               }
+
+               Fputs(recvline, stdout);
+           }
+       }
+     #+end_src
+** Normal Startup
+   + 虽然我们的例子很小,但是却很完整,可以帮助我们了解一些边界情况: 比如客户端host
+     崩溃, 客户端process崩溃, 网络连接消失等等
+   + 首先我没在linux上面开启server(需要%的root权限), 开启的过程调用了socket, bind
+     listen, accept,然后就block在accept上面了,因为我们还没开client,不会有SYN来,
+     当然所有的connection queue都是空的
+     #+begin_src sh
+       linux % tcpserv01 &
+       [1] 17870
+     #+end_src
+   + 这个时候,我们可以用netstat 来查看当前的系统中所有的socket (必须用参数-a,才能看到
+     listening的socket): 正如我们所料, server建立在wildcard的IP和9877的端口上
+     #+begin_src sh
+       linux % netstat -a
+       Active Internet connections (servers and established)
+       Proto   Recv-Q Send-Q Local Address   Foreign Address    State
+       tcp          0      0 *:9877          *:*                LISTEN
+     #+end_src
+   + 然后我们在同一台机器上面调用client, 地址设置为127.0.0.1(本机)
+     #+begin_src sh
+       linux % tcpcli01 127.0.0.1
+     #+end_src
+   + client和server在接下来会发生的变化是:
+     - client会调用socket, connect, 这就会触发三次握手
+     - 三次握手结束, connect"先"在client中返回, accept"后"在server中返回,因为三次
+       握手第二次返回SYN+ACK的时候,client的connect就会返回. 而第三次返回ACK的时候,
+       server的accept才会返回.
+     - client会调用str_cli, 然后会被block在str_cli调用的fgets里面
+     - server的accept返回后, server调用了fork:
+       1) child会调用str_echo=>readline=>read, 最后read会block在从connected sock
+          et里面读取数据
+       2) parent会再次调用accept, 因为queue里面什么也没有,所以它还是会block住.
+   + 这个时候我们再次使用netstat来看看当前的socket情况如下, 第一个ESTABLSHED是代表
+     server的(因为local端口号是9877), 第二个ESTABLISHED是client的, 因为我们client
+     server在一个机器上,所以会共同显示.
+     #+begin_src sh
+       linux % netstat -a
+       Active Internet connections (servers and established)
+       Proto  Recv-Q  Send-Q  Local Address       Foreign Address    State
+       tcp         0       0  local host:9877     localhost:42758    ESTABLISHED
+       tcp         0       0  local host:42758    localhost:9877     ESTABLISHED
+       tcp         0       0  *:9877              *:*                LISTEN
+     #+end_src
+   + 我们可以更详细的使用ps命令来查看当前的这些socket:
+     - PID 和PPID分别代表进程ID和父ID, 这就很容易看哪个是子,哪个是父了.
+     - STAT的S代表sleeping
+     - WCHAN表示condition(只在sleep的时候):
+       1) wait_for_connect: block在accept或者connect
+       2) tcp_data_wait: block在socket 输入输出
+       3) read_chan: block在terminal的输入输出.
+
+
+
+
+
+
+
+
+** Normal Termination
+   + 紧接着上面的操作,建立好连接以后,我们的client端可以开始发送数据, 我们发送发
+     送什么, server就会返回什么.最后以control+D的方式来结束.
+     #+begin_src sh
+       linux % tcpcli01 127.0.0.1
+       hello, world
+       hello, world
+       good bye
+       good bye
+       ^D
+     #+end_src
+   + 如果我们在以control+D结束之后马上开始netstat,会得到下面的结果, TIME_WAIT我们
+     十分熟悉,他是client端的最后一个state,设置它为两倍的MSL可以一来防止最后一个ACK
+     丢失,而来保证老的分组在网络上已经丢失.
+     #+begin_src c
+       linux % netstat -a | grep 9877
+       tcp      0    0   *:9877                   *:*                LISTEN
+       tcp      0    0   localhost:42758          localhost:9877     TIME_WAIT
+     #+end_src
+   + 正常关闭的时候,有如下的情况发生
+     1) 当我们输入EOF的时候, fgets 返回一个null pointer, 然后str_cli函数返回
+     2) str_cli返回了以后,client的main函数也就返回了,通过exit()
+     3) 所有main函数返回的时候,就会关闭这个process占有的open descriptor.这样
+        一来, client socket就被kernel所关闭了.这会导致client发送FIN到server,
+        server会返回ACK,至此TCP connection termination的第一部分完成了:
+        - client现在的状态是FIN_WAIT_2
+        - server现在的状态是CLOSE_WAIT(passive close的状态)
+     4) 当server 收到FIN的时候, server child正在readline中block,收到之后,readline
+        直接返回0, 然后这导致str_echo直接返回child main函数了.
+     5) server的子进程会推出,调用exit()
+     6) server的子进程退出的时候,会关闭其所有的open的descriptor.当然包括connected
+        socket, 这个时候会完成TCP connection termination的后半部分,之后client就会
+        进入TIME_WAIT进行最后的等待:
+        - FIN从server到client
+        - ACK从client到server
+     7) 最后,当sever的子进程结束的时候,一个SIGCHLD 信号会发送给其父进程.我们的parent
+        没有做什么处理,所以子进程最后会进入zombie状态,如下(z代表zombie)
+        #+begin_src sh
+          linux % ps -eo pid,ppid,stat,wchan:14,comm | grep tcp
+            PID  PPID STAT WCHAN          COMMAND
+          13320 13319 S    inet_csk_accep tcpserv01
+          13338 13320 Z    exit           tcpserv01 <defunct>
+        #+end_src
+** POSIX Signal Handling
+   + 所谓signal,也叫做software interrupts就是通知process某个event发生了.
+   + signal是异步方式(asynchronously), 也就是说被signal的发生时间是随机的,process
+     无法预测
+   + signal可以向两个方向传播:
+     - 从process到另外一个process(或者自身)
+     - 从kernel到process
+   + 上一节我们讲到子进程在最后结束的时候,发送了SIGCHLD信号给parent,但是没有处理,
+     所以子进程的资源没有回收,变成了zombie
+*** signal Function
+    + POSIX对于signal的标准处理方法是sigaction函数,但是这个函数有两个structure来
+      进行初始化,非常的麻烦.POSIX时代之前的做法是signal, 这个函数的参数就很友好.
+      但是每个系统的实现都不一样,所以我们做个折中:使用signal的接口,内部用sigaction
+      实现:
+      #+begin_src c
+        #include   "unp.h"
+
+        Sigfunc *
+        signal(int signo, Sigfunc *func) {
+            struct sigaction act, oact;
+
+            act.sa_handler = func;
+            sigemptyset(&act.sa_mask);
+            act.sa_flags = 0;
+            if (signo == SIGALRM) {
+                #ifdef SA_INTERRUPT
+                act.sa_flags |= SA_INTERRUPT;   /* SunOS 4.x */
+                #endif
+            } else {
+                #ifdef SA_RESTART
+                act.sa_flags |= SA_RESTART;     /* SVR4, 4.4BSD */
+                #endif
+            }
+
+            if (sigaction(signo, &act, &oact) < 0) {
+                return (SIG_ERR);
+            }
+            return (oact.sa_handler);
+        }
+      #+end_src
+    + 常规的signal函数的声明就非常恐怖:返回值和其中一个参数都是"带一个int参数,返
+      回值为空的函数指针"
+      #+begin_src c
+        void (*signal(int signo, void(*func)(int)))(int);
+      #+end_src
+    + 为了简化,我们设计了下面的typedef
+      #+begin_src c
+        typedef void Sigfunc(int);
+      #+end_src
+    + sigaction的sa_handler成员是为了设置func参数的.
+    + 我们还通过sa_mask来设置我们的handler运行期间被block的其他signal: handler
+      自己处理的signal不需要block, 因为uinix无法queue signal.如果一个handler正
+      在处理某一类signal,相同类型的signal再出现N此就会被认为是只出现了一次.
+    + 如果处理的signal不是SA_RESTART,那么可以通过设置sa_flags为SA_RESTART(某些
+      老的系统为SA_INTERRUPT)来让某些被中断的(被handler中断的)system call继续运
+      行.
+*** POSIX Signal Semantics
+    + 一旦一个signal handler 被安装了,就一直是安装状态
+    + 某个类型A的signal在处理的话,相同类型的signal会被block, sa_mask设置的那些
+      signal也会block
+    + 如果被block的signal在block的时候出现了N此,只算一次.可以认为block 数组是
+      用的boolean类型,只能记住来没来过,不能记住来过几次
+** Handling SIGCHLD Signals
+   + zombie state存在的理由是它可以保存子进程的一些信息(父进程可能会想知道):
+     - 子进程的process ID
+     - 子进程的termination status
+     - 子进程的资源使用情况(CPU时间,内存)
+*** Handling Zombies
+    + zombie不能总是留在系统里面,因为它会占据kernel的空间,如果不清理,会导致process
+      descriptor用尽,我们需要用wait来防止子进程变成zombie,并且用下面的代码来指定
+      其handler.下面的函数需要在listen()之后,fork()之前
+      #+begin_src c
+        Signal(SIGCHLD, sig_chld);
+      #+end_src
+    + 下面就是处理sig_chld的代码
+      #+begin_src c
+        #include   "unp.h"
+
+        void
+        sig_chld(int signo) {
+            pid_t    pid;
+            int      stat;
+
+            pid = wait(&stat);
+            printf("child %d terminated\n", pid);
+            return;
+        }
+      #+end_src
+*** Handling Interrupted System Calls
+    + accept被我们称作"slow system call", 因为它可能一直等待着connection queue里
+      面的成员,而一直不返回.相似的system call还有read
+    + 如果符合下面的几条,那么system call会返回一个错误代码EINTR:
+      1) 进程block在一个slow system call
+      2) 进程捕捉到一个signal A
+      3) signal A的handler处理完成,然后返回了.
+    + 上述情况下返回错误代码EINTR看起来很突兀.要从系统的角度理解.
+      - slow system call可能永远都不返回的
+      - 进程处理了某个signal,而其signal handler()要比system call更优先运行.这个
+        时候,就要牺牲掉system call
+      - 但是我们这次的牺牲其实不是真正的错误,所以我们要告诉用户:通过把errno设置为
+        EINTR告诉用户,我们这次返回了负数,但是我们不是真的失败,我们是被interrupt了,
+        请再次调用我们吧!
+        #+begin_src c
+          for (; ;) {
+              clilen = sizeof(cliaddr);
+              if ( (connfd = accept(listenfd, (SA*)&cliaddr, &clilen)) < 0) {
+                  if (errno == EINTR) {
+                      continue;
+                  } else {
+                      err_sys("accept error");
+                  }
+              }
+          }
+        #+end_src
+    + 上面的做法是让用户再次调用slow system call, 这样做很繁琐. 所以后来出现了一
+      种设置sgaction的sa_flags的方法来让刚才被中断的slow system call重新执行:
+      #+begin_src c
+        #include <signal.h>
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <error.h>
+        #include <string.h>
+        #include <unistd.h>
+
+        void sig_handler(int signum)
+        {
+            printf("in handler\n");
+            sleep(1);
+            printf("handler return\n");
+        }
+
+        int main(int argc, char **argv)
+        {
+            char buf[100];
+            int ret;
+            struct sigaction action, old_action;
+
+            action.sa_handler = sig_handler;
+            sigemptyset(&action.sa_mask);
+            action.sa_flags = 0;
+
+            /********************************/
+            /* version 1: set this flag     */
+            /* version 2: NOT set this flag */
+            /********************************/
+            action.sa_flags |= SA_RESTART;
+
+
+            /**************************/
+            /* ctrl + c is for SIGINT */
+            /**************************/
+            sigaction(SIGINT, NULL, &old_action);
+            if (old_action.sa_handler != SIG_IGN) {
+                sigaction(SIGINT, &action, NULL);
+            }
+
+            bzero(buf, 100);
+
+            ret = read(0, buf, 100);
+            if (ret == -1) {
+                perror("read");
+            }
+
+            printf("read %d bytes:\n", ret);
+            printf("%s\n", buf);
+
+            return 0;
+        }
+      #+end_src
+    + version 1: SA_RESTART 设置了,可以自动重启read
+      #+begin_src sh
+        lvtest@auto-inst:~/tmp$ ./a.out
+        ^Cin handler
+        ^Chandler return
+        in handler
+        handler return
+        ^Cin handler
+        handler return
+        read 0 bytes:
+      #+end_src
+    + version 2:没有设置SA_RESTART,无法重启read,直接返回
+      #+begin_src sh
+        lvtest@auto-inst:~/tmp$ ./a.out
+        ^Cin handler
+        handler return
+        read: Interrupted system call
+        read -1 bytes:
+      #+end_src
+    + 虽然设置sa_flags为SA_RESTART的方法很好,但是却不能跨平台,因为有些平台是无法
+      重启某些system call的(更重要的是所有平台都无法重启connect,这个是特例,需要
+      select的帮助),所以需要跨平台的程序还是要用循环来重新调用system call
+** wait and waitpid Function
+   + 在Unix-like的系统中,使用wait和waitpid来处理已经结束了的子进程
+     #+begin_src c
+       #include <sys/wait.h>
+
+       pid_t wait(int *statloc);
+       pid_t waitpid(pid_t pid, int *statloc, int options);
+     #+end_src
+   + 这两个函数都有两个返回值:
+     - pid_t就是"等到"的刚刚结束的子进程的id
+     - *statloc会返回这个子进程的termination status, 返回的是一个int值(通过int指
+       针), 所以具体的信息肯定是这个int值的某个bit位表示的,使用"宏"来读取相应的bit
+       从而得知结束状态:WIFEXITED, WEXITSTATUS
+   + wait的功能比较简单,而且没有可定制的可能:
+     - 一个进程调用了wait,但是调用的时候没有子进程结束,那么它必须block,等待第一个返
+       回的子进程
+     - wait也只能等待第一个返回的子进程,如果有多个子进程的情况下,剩下的子进程就只有
+       变成zombie了
+   + waitpid的功能是wait的超集:
+     - 一个进程调用了waitpid,但是调用的时候没有子进程结束,那么它可以block,也可以把
+       options添加一个设置WNOHANG来让函数watipid马上返回.
+     - waitpid如果设置参数pid为-1,那么就和wait的行为一样:等待第一个返回的子进程.如
+       果pid设置为某个子进程的processID,那么就可以"专门"等待那个子进程
+   + 下面我们就看一个wait的例子,会衍生出很多问题
+     - client端一次就要求五个socket,server端也就要fork五次来满足
+       #+begin_src c
+         #include   "unp.h"
+
+         int main(int argc, char *argv[])
+         {
+             int                i, sockfd[5];
+             struct sockadr_in  servaddr;
+
+             if (argc != 2) {
+                 err_quit("usage: tcpcli <IPaddress>");
+             }
+
+             for (i = 0; i < 5; i++) {
+                 sockfd[i] = Socket(AF_INET, SOCK_STREAM, 0);
+
+                 bzero(&servadr, sizeof(servaddr));
+                 servaddr.sin_family = AF_INET;
+                 servaddr.sin_port = htons(SERV_PORT);
+                 Inet_pton(AF_INET, argv[1], &servaddr.sin_addr);
+
+                 Connect(sockfd[i], (SA*)&servadr, sizeof(servaddr));
+             }
+             str_cli(stdin, sockfd[0]);
+
+             exit(0);
+         }
+       #+end_src
+     - 当我们传输结束的时候,差不多是5个FIN同时发送给server, 这也就意味着差不多在
+       同时,会有五个server的子进程结束, 也就意味着有五个SIGCHLD信号传递给server
+       父进程.因为Unix系统的信号是无法queue的, 这也就意味着,如果我们在"同一台机器"
+       上面做这个实现,五个SIGCHLD的效果跟一个SIGCLD是一样的.
+       #+begin_src sh
+         linux % tcpserv03 &
+         [1] 20419
+         linux % tcpcli04 127.0.0.1
+         hello
+         hello
+         ^D
+         child 20426 terminated
+       #+end_src
+     - 因为只wait到了一个子进程,所以剩下的子进程就全部都zombie了.
+     - 不能仅仅是产生zombie的问题,这个程序会因为环境的不同,产生不同的结果.
+       1) 这个例子 我们是在同一台机器运行client和server,所以五个SIGCHLD几乎是同
+          时产生的,这才造成了handler只运行一次
+       2) 如果我们是在两台机器上运行这个例子,那么由于五个FIN在网络上传输的时间不同
+          最后可能只有有部分SIGCHLD被catch到. 只需要记住造成这种状况的原因是unix
+          的signal无法queue.
+   + wait的问题,很多时候要靠waitpid来解决.
+     - waitpid的解决方案如下, 需要注意的是waitpid等到所有子进程的方法是busy waiting
+       所以,你一定要设置waitpid的option为WNOHANG,来让waitpid在没有当前退出进程的子
+       进程的时候, 马上退出
+       #+begin_src c
+         #include  "unp.h"
+
+         void sig_chld(int signo) {
+             pid_t   pid;
+             int     stat;
+
+             while((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
+                 printf("child %d terminated\n", pid);
+             }
+             return;
+         }
+       #+end_src
+     - server端调用这个新的waitpid版本的sig_chld,同时还要处理EINTR的"正常的"errno,
+       所以就有了下面的最"正确"的版本:
+       #+begin_src c
+         #include   "unp.h"
+         int main(int argc, char *argv[])
+         {
+             int                 listenfd, connfd;
+             pid_t               childpid;
+             socklen_t           chilen;
+             struct sockaddr_in  cliaddr, servaddr;
+
+             void  sig_chld(int);
+
+             listenfd = Socket(AF_INET, SOCK_STREAM, 0);
+
+             bzero(&servaddr, sizeof(servaddr));
+             servaddr.sin_family = AF_INET;
+             servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+             servaddr.sin_port = htons(SERV_PORT);
+
+             Bind(listenfd, (SA*)&servaddr, sizeof(servaddr));
+
+             Listen(Listenfd, LISTENQ);
+
+             Signal(SIGCHLD, sig_chld); /* must call waitpid() */
+
+             for (;;) {
+                 clilen = sizeof(cliaddr);
+                 if ((connfd = accept(listenfd, (SA*)&cliaddr, &clilen)) < 0) {
+                     if (errno == EINTR) {
+                         continue;
+                     } else {
+                         err_sys("accept error");
+                     }
+                 }
+
+                 if ((childpid = Fork()) == 0) { /* child process */
+                     Close(listenfd);            /* close litening socket */
+                     str_echo(connfd);
+                     exit(0);
+                 }
+                 Close(connfd);
+             }
+             return 0;
+         }
+       #+end_src
+** Connetion Abort before accept Returns
+   + 前面说过,为了给handler让路所以system call会return, 让handler运行. 这种
+     interrupted system call 的情况其实不是fatal的错误,所以会设置errno为EINTR,
+     我们可以捕捉这个errno,然后忽略它,重新开启system call
+   + 和上面情况是,三次握手完成后,在server端调用accept值钱, client发送了一个RST,
+     这种情况下,我们的accept()调用会失败. 如果我们检查errno发现是ECONNABORTED("
+     softeare caused connection abor")的话.说明这不是一个fatal的错误,我们可以
+     捕捉这个错误,然后重新调用accept()
+   + 这里说说FIN和RST的区别:
+     - FIN: "我已经不想和你说什么了,但是我依然愿意想听你把你的话说完"
+     - RST: "我们的谈话结束了,我不会跟你再废话,也不会听你说任何事情了"
+** Termination of Server Processs
+   + 首先开启client和server, 然后kill掉server的一个子进程.这就模仿了"server进程"
+     崩溃的情况(注意这里是"server进程"崩溃, "server的主机"并没有崩溃):
+     1) 开启client和server,然后确认echo都是ok的
+     2) 找到某个server的子进程,然后kill掉它,随之而来的就是所有的descriptor都关闭了,
+        一个FIN发送到client, client会回应一个ACK. 半关闭完成了.
+     3) SIGCHLD会发送到server的parent,然后被handle了
+     4) client这边并不知道server是怎么回事,只是知道"对方不想发数据给我了", client
+        这个时候,是block在那里的.等待用户输入的
+     5) netstat会看到现在的情况:
+        #+begin_src sh
+          linux % netstat -a | grep 9877
+          tcp     0      0   *:9877                *:*              LISTEN
+          tcp     0      0   localhost:9877        localhost:43604  FIN_WAIT2
+          tcp     0      0   localhost:43604loca   lhost:9877       CLOSE_WAIT
+        #+end_src
+     6) 这个时候client依然可以输入,我们输入一段话,会发现str_cli崩溃退出了:
+        - 我们打入"another line", str_cli就会调用writen来往socket里面写数据.这是
+          允许的client并不知道server发生了什么,只是知道"server不想跟他说话了",但是
+          没有收到FIN,说明"server还能听我的"
+        - server host 收到这些数据后,非常痛快的返回了一个RST,因为对应这个socket的
+          子进程已经不存在了
+     7) client端却不会真正的看到这个RST,因为client在writen之后的操作是readline,
+        然后会读取到上面2)返回的0(EOF),这是由于FIN已经设置了,"server已经不想跟我说话"
+        了.不会再在socket里面取得任何数据了.所以错误信息是"server terminsted prematurely"
+     8) client关闭,它所有的descriptor也会关闭.
+   + 上面的例子的问题在于当FIN来到的时候,client被block在fgets:
+     - client在同时和两个descriptor工作:socket和用户的input. 而且只能block在其中一个descriptor
+     - client应该的行为是:同时和"socket","用户的input"两个descriptor工作,而且能够block
+       在任意一个descriptor:无论哪个descriptor来了信息都能第一时间知道.
+** SIGPIPE Signal
+   + 上面的例子中,如果我们的client忽略了readline返回的错误,一意孤行的往socket里
+     面写呢?答案是:如果进程朝一个已经设置为RST的socket里面写入数据的话. SIGPIPE
+     信号就会发给这个进程.这个进程的默认处理方式是关闭进程,但是可以catch
+   + 如果你catch了这个signal,那么你写入的write函数,也会返回EPIPE
+   + 写入一个收到FIN的socket是合理的,写入一个收到RST的socket是错误的,所以因为我们
+     第一次的写入导致了RST,所以,我们只认定第二次的写入是错误的.
+   + 下面这个例子,就是把写入的数据分成了两个部分,第一个char负责触发RST,剩下的chars
+     负责产生SIGPIPE
+     #+begin_src c
+       #include    "unp.h"
+       
+       void str_cli(FILE *fp, int sockfd) {
+           char     sendline[MAXLINE], recvline[MAXLINE];
+       
+           while(Fgets(sendline, MAXLINE, fp) != NULL) {
+               Writen(sockfd, sendline, 1);
+               sleep(1);
+               Writen(sockfd, sendline + 1, strlen(sendline) - 1);
+       
+               if (Readline(sockfd, recvline, MAXLINE) == 0) {
+                   err_quit("str_cli: server terminated prematurely");
+               }
+       
+               Fputs(recvline, stdout);
+           }
+       }
+     #+end_src
+   + 这个新的client的效果如下:就不会有机会到达readline了SIGPIPE没catch,默认的效
+     果就是关闭进程
+     #+begin_src c
+       linux % tcpcli11 127.0.0.1
+       hi there
+       hi there
+       
+       bye
+     #+end_src
+   + 说道如何处理SIGPIPE,这个真是得依情况而定.一般来说设置SIG_IGN(ignore)是比较好
+     的方法.因为两点:
+     - 系统对于这个错误不仅仅发了SIGPIPE,而且让接下来的write都返回EPIPE,所以就算
+       ignore了SIGPIPE,也可以通过EPIPE来发现错误
+     - 如果当前有多个socket在传递,而signal只是通知错误,又无法确定是哪个socket的
+       问题,贸然删除其中某一个显然不好.
+** Crashing of Server Host
+   + 说完了server process崩溃,这里讲讲server host崩溃:我们首先开启server和client,
+     然后输入一些字符串表示成功建立connection,最后把server的网线拔掉:拔掉就是最
+     成功的模拟了server host崩溃.这同时也模拟了由于路由原因server unreachable的情况
+   + server host崩溃后的情况如下:
+     1) 当server host崩溃的时候,在网络上没有任何的数据包传输的
+     2) 我们在client端输入一些东西, 通过writen写入到socket里面,然后就block在readline
+        等待结果
+     3) 如果使用tcpdump, 我们会看到client 不停的重发数据,希望能够对得到server的ACK:
+        Berkeley的实现会尝试12次重传等待9分钟之后,放弃.然后发送一个错误到client进程,
+        这个时候是block在readline的,所以readline会返回一个错误:
+        - 如果client和server中间的路由器判断出来server host无法到达,并且回应以ICMP
+          "destination unreachable"信息.那么错误就是EHOSTUNREACH
+        - 如果server host宕机,并且没有其他情况,那么返回ETIMEDOUT
+   + 虽然我们的client会经过很久(比如9分钟),最后知道了结果,但是我们希望能更快的知道结果,
+     方法就是在readline里面设置超时
+   + 这个例子我们是通过发送数据换来的知道server宕机,我们还可以通过SO_KEEPALIVE socket
+     来做到同样的效果.
+** Crashing and Rebooting of Server Host
+   + server host崩溃之后又重启的话,其实和前面差不多,因为原来的connection已经全部
+     都丢失了,所以server还是会返回RST:
+     1) 开启server和client,输入一行来确认connection建立成功
+     2) server崩溃并重启
+     3) 我们在client端输入一行,这将会导致一段TCP 数据传给server端
+     4) server host崩溃后重启,但是所有原来的connection的信息都已经不存在了,所以
+        对client传来的数据只能报以RST
+     5) 我们的client一直block在readline,然后当RST传来的时候,readline就返回错误
+        ECONNRESET
+** Shutdown of Server Host
+   + 前面我讨论了1)关闭server进程2)关闭server主机两种方式,这里我们讨论的是server
+     用shutdown的正常方式关机:
+     - init会首先发送SIGTERM signal给所有server process
+     - 在过了5到20秒之后,还有进程没有关闭,那么就给所有的进程发送SIGKILL
+     - SIGTERM是可以catch的,如果我们的server没有catch住,那么SIGKILL就无法catch
+       了,SIGKILL会结束server进程,也就意味着关闭server所有的descriptor.
+     - 在client端,可能需要select或者epoll函数来探知server的结束
+** Summary of TCP Example
+   + 在client和server通信之前,他们都要指定两对儿socket地址:
+     - local IP address && local port
+     - foreign IP address && foreign port
+   + 从client的角度来说:
+     - 在socket()之后,foreign IP和address必须要通过connect来指定,
+     - 同时,local IP和address要靠bind()来指定,但是一般来说不在client端指定这个.
+     - 我们可以在连接建立之后通过getsockname来了解local IP和address
+   + 从server的角度来说:
+     - 在socket()之后, local IP和address靠bind()来指定,一般来说local的IP都是设置
+       为waildcard, 那么具体的数值就要靠建立连接之后的getsockname()
+     - foreign IP address & port是靠accept的两个参数,
+     - 如果execed了原来的内存位置的话, accept的返回值就不再准确了.我们需要使用
+       getpeername().
+** Data format
+   + 由于不同的体系结构(big endian, small endian)上面传递二进制数据,会造成错误,这
+     本质上是由于不同体系对于内存的解释不同.
+
+
+
+

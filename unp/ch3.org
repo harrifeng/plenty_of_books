@@ -1,0 +1,681 @@
+#+TITLE: Chapter 3
+* Sockets Introduction
+** Introduction
+   + socket address structure是最基础的socket数据结构,通常有两个方向的传递:
+     - 从process到内核
+     - 从内核到process
+   + 在网络上传递的数据必须是binary, text类型是网络地址转换成binary的形式,使用的
+     函数是下面两个:
+     - inet_addr & inet_ntoa (for IPv4)
+     - inet_pton & inet_ntop (for IPv4 and IPv6)
+** Socket Address Structure
+   + 不同的协议都有自己的socket结构体, 以sockaddr_开头,加上不同的字符串以区别协议
+*** IPv4 Socket Address Structure
+    + IPv4 socket address structure, 一般叫做"Internet socket address structure"
+      在<netinet/in.h>里面创建了一个叫做sockaddr_in的数据结构
+      #+begin_src c
+        struct in_addr {
+            in_addr_t s_addr;           /* 32-bit IPv4 address  */
+                                        /* network byte ordered */
+        };
+
+        struct sockaddr_in {
+            uint8_t            sin_len;            /* length of structure (16) */
+            sa_family_t        sin_family;         /* AF_INET */
+            in_port_t          sin_port;           /* 16-bit TCP or UDP port number */
+                                                   /* network byte ordered */
+            struct in_addr     sin_addr;           /* 32-bit IPv4 address */
+                                                   /* network byte ordered */
+            char               sin_zero[8];        /* unused */
+        };
+      #+end_src
+    + 这个例子中有如下需要了解的:
+      - sin_len是后加上去的,之前最开始的成员变量是sin_family (unsigned short). 因
+        为来的晚,所以不是所有的实现都支持它
+      - uint8_t是Unsigned 8-bit integer
+      - len虽然列在这里,但是我们用来不去设置或者使用它(唯一的例外是我们处理routing
+        socket 的时候)
+      - 有四个函数把socket address structure从进程拷贝到kernerl,他们是bind, connect,
+        sendto, sendmsg. 他们四个都是通过sockargs函数, 而sockargs函数,则会设置sin_len.
+        不幸的是,sockargs是Berkeley的实现方法,其他实现有没有设置这个sin_len就无法判断了,
+        但是IPv6确是明确要求设置SIN6_LEN这个域的
+      - POSIX规范只要求了sin_family, sin_port和sin_addr,但是所有的实现都加上了sin_zero
+        这样所有的socket address structure都至少有16 bytes
+      - TCP UDP的 port number和IP地址都必须是用网络比特顺序存储的(network byte order)
+      - 因为我们的IP地址在这里是使用了in_addr这个结构体,所以一个IP地址的表示就有
+        两种方式, 如下(serv表示一个sockaddr_in类型数据):
+        1) serv.sin_addr.s_addr 是 in_addr_t类型的IP地址(通常就是unsigned 32-bit integer)
+        2) serv.sin_addr是 struct in_addr类型的IP地址
+      - 历史上struct in_addr的设计比这个复杂,里面曾经可以通过union的成
+        员让, A类, B类地址来取得自己的网络部分, 随着subnet的出现, struct in_addr
+        就开始只有一个成员变量啦
+      - sin_zero全部都是零.
+      - socket address structure是每个host有自己的,相互之间不交流的. 虽然某些数
+        据,比如sin_addr用来指导数据交换
+*** Generic Socket Address Structure
+    + socket address structure总是以pass by reference的方式传入到socket function
+      当中去的,但是问题是socket function要处理多种协议,而每种协议都有自己的socket address
+      structure.
+    + 放到1989年以后,我们可以使用void* 来指代所有的指针. 但是socket function诞生于1982
+      年.所以它不得不为所有的socket address structure创造了一个generic 的socket address
+      structure.
+      #+begin_src c
+        struct sockaddr {
+            uint8_t        sa_len;
+            sa_family_t    sa_family;     /* address family: AF_xxx value */
+            char           sa_data[14];   /* protocol-specific address */
+        };
+      #+end_src
+    + 我们可以看到多有的socket function都是用的generic的socket address structure
+      作为其函数的参数的
+      #+begin_src c
+        int bind(int, struct sockaddr*, socklen_t);
+      #+end_src
+    + generic指针的坏处就是每次某个协议的socket address structure一定要进行一次
+      类型转换(casting)
+      #+begin_src c
+        struct socketaddr_in serv;           /* IPv4 socket address structure */
+
+        /* fill in serv{} */
+        bind(sockfd, (struct sockaddr *)&serv, sizeof(serv));
+      #+end_src
+*** IPv6 Socket Address Structure
+    + IPv6在<netinet/in.h>里面定义了自己的socket address structure
+      #+begin_src c
+        struct in6_addr {
+            uint8_t s6_addr[16];             /* 128-bit IPv6 address */
+                                             /* network byte ordered */
+        };
+
+        #define SIN6_LEN      /* required for compile-time tests */
+
+        struct sockaddr_in6 {
+            uint8_t             sin6_len;              /* length of this struct (28) */
+            sa_family_t         sin6_family;           /* AF_INET6 */
+            in_port_t           sin6_port;             /* transport layer port# */
+                                                       /* network byte ordered */
+            uint32_t            sin6_flowinfo;         /* flow information, undefined */
+            struct in6_addr     sin6_addr;             /* IPv6 address */
+                                                       /* network byte ordered */
+            uint32_t            sin6_scope_id;         /* set of interfaces for a scope */
+        };
+      #+end_src
+    + 上面例子需要了解的是:
+      - 如果系统支持socket address structure的长度, 那么就要设置SIN6_LEN
+      - 这个布局是惊喜设计的,可以达到64-bit aligned的效果,在64位处理器上效果好
+      - sin6_flowinfo分成两部分:
+        1) low-order 20 bits 是 flow lable
+        2) high-order 13 bits是保留字
+    + sin6_scope_id用来指示scope zone
+*** New Generic Socket Address Structure
+    + 为了迎合新的IPv6协议,一个新的generic socket address structure也就设计出来了
+      #+begin_src c
+        struct sockaddr_storage {
+            uint8_t        ss_len;       /* length of this struct (implementation dependent) */
+            sa_family_t    ss_family;    /* address family: AF_xxx value */
+            /*******************************************************************/
+            /* implementation-dependent elements to provide:                   */
+            /* a) alignment sufficient to fulfill the alignment requirement of */
+            /*    all socket address types that the system supports            */
+            /* b) enough storage to hold any type of socket address that the   */
+            /*    system supports                                              */
+            /*******************************************************************/
+        };
+      #+end_src
+***  Comparison of Socket Address Structures
+     + 下面用一个图来对比所有的socket address structure
+       #+begin_src dot :file ../../static/images/sas.png :cmdline -n -Tpng
+         digraph foo {
+                     node[shape="plaintext",fontsize="9",fontname="Monaco, Consolas"]
+                     subgraph cluster_ipv4 {
+                     label="ipv4";
+                     style="dashed";
+                     node_ipv4[label=<<table BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                                          <TR><TD width="55" height="16" >length</TD><TD width="55" port="f0">AF_NET</TD></TR>
+                                          <TR><TD colspan="2" height="16">16-bit port</TD></TR>
+                                          <TR>
+                                          <TD colspan="2" height="32">32-bit<br /> IPv4 address</TD>
+                                          </TR>
+                                          <TR ><TD colspan="2" height="64" bgcolor="grey">Unused</TD></TR>
+                                      </table>>];
+
+                     }
+                     subgraph cluster_ipv6 {
+                     label="ipv6";
+                     style="dashed";
+                     node_ipv6[label=<<table BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                                          <TR><TD width="55" height="16" port="f0">length</TD><TD width="55">AF_NET6</TD></TR>
+                                          <TR><TD colspan="2" height="16">16-bit port</TD></TR>
+                                          <TR>
+                                          <TD colspan="2" height="32">32-bit<br /> flow label</TD>
+                                          </TR>
+                                          <TR>
+                                          <TD colspan="2" height="128">128-bit<br /> IPv6 address</TD>
+                                          </TR>
+                                          <TR ><TD colspan="2" height="32">32-bit <br /> scope ID</TD></TR>
+                                      </table>>];
+
+                     }
+                     subgraph cluster_unix {
+                     label="Unix";
+                     style="dashed";
+                     node_unix[label=<<table BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                                          <TR><TD width="55" height="16" port="f0">length</TD><TD width="55">AF_LOCAL</TD></TR>
+                                          <TR>
+                                          <TD colspan="2" height="300">upt to 104 Bytes<br /> pathname</TD>
+                                          </TR>
+                                      </table>>];
+
+                     }
+                     subgraph cluster_dl {
+                     label="Datalink";
+                     style="dashed";
+                     node_dl[label=<<table BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                                          <TR><TD width="55" height="16" port="f0">length</TD><TD width="55">AF_LINK</TD></TR>
+                                          <TR><TD colspan="2" height="16">interf index</TD></TR>
+                                          <TR><TD width="55" height="16" port="f0">type</TD><TD width="55">name len</TD></TR>
+                                          <TR><TD width="55" height="16" port="f0">addr len</TD><TD width="55">sel len</TD></TR>
+                                          <TR>
+                                          <TD colspan="2" height="200">32-bit<br /> Interface name <br/> link-layer addr</TD>
+                                          </TR>
+                                      </table>>];
+
+                     }
+
+                     subgraph cluster_storage {
+                     label="Storage";
+                     style="dashed";
+                     node_storage[label=<<table BORDER="0" CELLBORDER="1" CELLSPACING="0">
+                                          <TR><TD width="55" height="16" port="f0">length</TD><TD width="55">AF_XXX</TD></TR>
+                                          <TR ><TD colspan="2" height="360" bgcolor="grey">(opaque) <br /> longest on system</TD></TR>
+                                      </table>>];
+
+                     }
+                     node_ipv4->node_ipv6->node_unix->node_dl->node_storage[constraint="false", style="invis"];
+                  }
+       #+end_src
+     + 我们原来总是看到socket函数的第三个参数为socket address structures的size,比
+       如第一章的例子中(如下). 如果length field 不是在4.3BSD reno中引入,而是第一个
+       版本(设计bind的时候)就引入, 那么,我们可能就不需要每次都多加一个参数了
+       #+begin_src c
+         Bind(listenfd, (SA*) &servaddr, siezeof(servaddr));
+       #+end_src
+** Value-Result Arguments
+   + 我们刚才已经讨论过了socket address structure, 他们主要是在process和kernel之
+     间传递.传递的方向不同,导致length of the structure的使用方法不同.
+     - 从process到kernel:例子有, 函数bind, connect, sendto, 由于被告知了指针地址,
+       和数据长度.所以,内核知道要从进程拷贝多少东西
+       #+begin_src c
+         struct sockaddr_in serv;
+
+         /* fill in serv{} */
+         connect(sockfd, (SA *)&serv, sizeof(serv));
+       #+end_src
+
+       #+begin_src dot :file ../../static/images/p_to_k.png :cmdline -n -Tpng
+         digraph foo {
+            subgraph cluster_core {
+            bgcolor="grey";
+            label="user process";
+            node[shape="rect",fontname="Monaco, Consolas"];
+            node_a[label = "length(int)"]
+            node_b[label = "socket\naddress\nsructure"]
+            }
+
+            subgraph cluster_kernel {
+            bgcolor="white";
+            label="Kernel";
+            node[shape="none",width=2]
+            node_c[label = ""]
+            node_d[label = ""]
+            }
+
+            node_a->node_c[label=" value"]
+            node_b->node_d[label=" protocol address"]
+         }
+      #+end_src
+
+     - 从kernel到process:例子有accept, recvfrom, getsockname, getpeername.这些函数
+       里面的len不再是一个int,而是pointer to int. 其目的有两点
+       #+begin_src c
+         struct sockaddr_un cli;    /* Unix domain */
+         socklen_t  len;
+
+         len = sizeof(cli);         /* len is a value */
+         getpeername(unixfd, (SA *) &cli, &len);
+         /* len may have changed */
+       #+end_src
+       #+begin_src dot :file ../../static/images/k_to_p.png :cmdline -n -Tpng
+             digraph foo {
+                node [shape="record",fontname="Monaco, Consolas"];
+
+                subgraph cluster_core {
+                bgcolor="grey";
+                label="user process";
+                node[shape="rect",width=2]
+                node_a[pos="0,0",label = "length(int *)"]
+                node_b[pos="0,1",label = "socket\naddress\nsructure"]
+
+                }
+
+             subgraph cluster_fsys {
+                 rankdir="RL"
+                 label   = "Kernel";
+                 bgcolor = "white";
+                 node [shape="none"]
+                 node_1 [pos="0,0", pin=true,label="",width=0.3];
+                 node_2 [label="", width=0.8];
+                 node_3 [label="", width=2];
+                 rankdir=LR;
+
+             }
+
+               node_a->node_1:f2[label="value"];
+               node_2:f1->node_a[label="result"];
+               node_b->node_3:f1[label=" protocol address"];
+             }
+      #+end_src
+
+       1) 能够返回到底拷贝了多少的值(这个很显然,因为是copy by reference嘛)
+       2) len在做参数之前,是有原来的值的(通过sizeof取得), 为的是告诉kernel界限在
+          哪里,不要拷贝数据到process的时候越界. 如果socket address structure是
+          长度不变,那么返回值一定:比如16 for IPv4 sockaddr_in, 28 for IPv6
+          sockaddr_in6. 对于长度可变的socket address structure,比如sockadr_un,
+          可能会改变len的值
+   + 除了kernel 到process拷贝时候的returned socket address structure, 会出现
+     value-result argument, 另外会出现value-result argument的函数有:
+     - select
+     - getsockopt
+     - recvmsg
+     - ifconf
+     - sysctl
+** Byte Ordering Functions
+   + 假设一个Integer是16bit,那么就是由两个bytes组成的.在计算机里面有两种放置方式:
+     - big-endian : with the high-order byte at the starting address:
+       1) 网络数据使用的就是这个endian, 其兼容性不好:,所以下面的例子只能在integer 为4bytes的
+          时候,成立啦,哪天换了64位cpu,integer成了8bytes,下面的代码两个s的值额就不相等了
+         #+begin_src c
+           // i MUST be 4bytes, as we have to fetch the last byte
+           short s = (short)i;
+           short s = ((short*)&i)[1];
+         #+end_src
+       2) 另外,摩托罗拉的power cpu使用的是big endian, 因为big endian会产生更好看
+          的hex dumps, 对的,你没看错.摩托罗拉的工程师认为,这个比兼容性更重要.为了更
+          好的读dump,因为程序崩溃的时候不是用printf读取数据的,直接是把内存内容打印
+          出来,如下,内存内容排列的顺序跟我们输入的顺序0x01020304是一样的:
+          #+begin_src c
+                        #include <stdio.h>
+                        
+                        int main(int argc, char *argv[])
+                        {
+                            int ii = 0x01020304;
+                            int i = 0;
+                            char* ptr = &ii;
+                            for (i = 0; i < 4; i++) {
+                                printf("%x\n", *ptr);
+                                ptr++;
+                            }
+                                
+                            return 0;
+                        }
+                        
+                        /***********************************/
+                        /* ===Result==                     */
+                        /* lvtest@auto-inst:~/tmp$ ./a.out */
+                        /* 1                               */
+                        /* 2                               */
+                        /* 3                               */
+                        /* 4                               */
+                        /***********************************/
+          #+end_src
+     - little-endian : with the low-order byte at the starting address, 
+       1) 英特尔设计的x86 cpu都是使用little endian, 因为little-endian在cast
+         的时候,不需要知道原型的长度,所以有很好的向后兼容性, 下面两条在x86上面的
+         结果一致.
+         #+begin_src c
+           // i can be 4 byte int, can ALSO be 8 bytes int. We just fetch the first byte
+           short s = (short)i;
+           short s = *(short*)&i;
+         #+end_src
+       2) little endian里面地址最小的byte,也同时是数据最小的一个byte,如果不用
+          printf(coredump的时候)打印出来的顺序和人类写入的顺序是不同的
+          #+begin_src c
+            #include <stdio.h>
+            
+            int main(int argc, char *argv[])
+            {
+                int ii = 0x01020304;
+                int i = 0;
+                char* ptr = &ii;
+                for (i = 0; i < 4; i++) {
+                    printf("%x\n", *ptr);
+                    ptr++;
+                }
+                    
+                return 0;
+            }
+            
+            /***********************************/
+            /* ===Result==                     */
+            /* lvtest@auto-inst:~/tmp$ ./a.out */
+            /* 4                               */
+            /* 3                               */
+            /* 2                               */
+            /* 1                               */
+            /***********************************/
+          #+end_src
+
+   + 下面是一个简单的测试endian的代码:小的"地址"取出来的,是"数据"的较小部分的就
+     是little endian, 这样我们每次取"数据"最"小"的部门,也就是地址为[0]的部门,
+     肯定可以是casting的结果.
+     #+begin_src c
+       int main(int argc, char *argv[])
+       {
+           union {
+               short    s;
+               char     c[sizeof(short)];
+           } un;
+
+           un.s = 0x0102;
+           printf("%s: ", CPU_VENDOR_OS);
+           if (sizeof(short) == 2) {
+               if (un.c[0] == 1 && un.c[1] == 2) {
+                   printf("big-endian\n");
+               } else if (un.c[0] ==2 && un.c[1] == 1) {
+                   printf("little-endian\n");
+               } else {
+                   printf("unknown\n");
+               }
+           } else {
+               printf("sizeof(short) = %d\n", sizeof(short));
+           }
+           return 0;
+       }
+     #+end_src
+   + 之所以讲到endian,是因为在网络上传输的数据必须是network byte order的. 比如TCP
+     里面的16-bit端口号和32-bit IP地址都得是network byte order的才能认识.
+   + 按说,可以把endian的实现封装起来,由api内部在传输前从内部order转换成network order
+     然后收到数据的时候,再反向转换回来. 但是由于历史的原因,包括POSIX规范都要求socket address
+     structure的某些部分,一定要以network order存储.所以我们就不多考虑这个问题了,转而研究
+     转换order的函数
+     #+begin_src c
+       #includ <netinet/in.h>
+
+       // Both return: value in network byte order
+       uint16_t htons(uint16_t host16bitvalue);
+       uint32_t htonl(uint32_t host32bitvalue);
+
+       // Both return: value in host byte order
+       uint16_t ntohs(uint16_t net16bitvalue);
+       uint32_t ntohl(uint32_t net32bitvalue);
+     #+end_src
+   + 名字也都好理解h代表host, s代表short, l代表long
+** Byte Manipulation Functions
+   + 和c语言里面的字符串不一样, socket里面的数据通常有很多0, 所以也无法做到"\0"
+     结尾.于是我们还要有很多的其他函数来处理字符串:
+     - 一类来自4.2bsd,以b开头
+       #+begin_src c
+         #include <strings.h>
+
+         // sets the specified number of bytess to 0 in the detination
+         void bzero(void *dist, size_t nbytes);
+
+         // const means the memory point by the "void *" can not (and will not)
+         // be changed.
+         void bcopy(const void *src, void *dest, size_t nbytes);
+
+         int bcmp(const void *ptr1, const voi *ptr2, size_t nbytes);
+       #+end_src
+     - 另外一类来子ANSI C standard, 以mem开头
+       #+begin_src c
+         #include <string.h>
+
+         // specified number f bytest to the value c in the destination
+         void *memset(void *dest, int c, size_t len);
+
+         // copy nbytes from src to dest
+         void *memcpy(void *dest, const void *src, size_t nbytes);
+
+         // return 0 if equal, otherwise unequal
+         int memcmp(const void *ptr1, const void *ptr2, size_t nbytes);
+       #+end_src
+** inet_aton, inet_addr, and inet_ntoa Funtions
+   + IP地址的host-network转换,在IPv4时代主要依靠下面两个函数
+     #+begin_src c
+       #include <arpa/inet.h>
+
+       // 1] converts c character pointed to by strptr into it2 32-bit
+       // binary network byte order value stored in addrptr
+       // 2] if string was valid return 1, otherwise return 0
+       // 3] if addrpter is NULL, the function still performs the validation
+       int inet_aton(const char* strptr, struct in_addr* addrptr);
+
+       // return pointers to dotted-decimal string
+       // use static memory in inet_ntoa implementation and thus NOT reentrant
+       char *inet_ntoa(struct in_addr inaddr);
+     #+end_src
+   + 值得一说的是inet_ntoa这个函数返回的是一个char*, 返回一个char *,那么肯定函数
+     里面使用了static变量,否则函数返回了,auto 变量都回收了,如何返回值.既然inet_ntoa
+     使用了static变量,那么就肯定不是reentrant函数了.更无法实现threadsafe, 所以这个
+     函数已经被放弃了,取而代之的是一个reentrant版本
+     #+begin_src c
+       char * inet_ntoa_r(struct in_addr in, char *buf, socklen_t size) {
+               (void) inet_ntop(AF_INET, &in, buf, size);
+               return (buf);
+       }
+     #+end_src
+   + 还有一个问题更多被放弃的函数inet_addr,它的问题主要是返回值如果是255.255.255.255
+     的话,其实是-1.一遍函数用-1代表出问题. 加之可以用inet_aton代替,所以早已被废弃
+** inet_pton and inet_ntop Functions
+   + 上一节介绍的函数都可以用下面两个函数代替,而且这两个函数还支持IPv6
+     #+begin_src c
+       #include <arpa/inet.h>
+
+       int inet_pton(int family, const char *strptr, void *addrptr);
+
+       const char* inet_ntop(int family, const void *addrptr, char *strptr, size_t len);
+     #+end_src
+   + family可以是AF_INET或者AF_INET6, 如果family不支持,会返回错误同时set errno
+     为EAFNOSUPPORT
+   + 注意inet_ntop的返回值是char *但是并不是和上一节的inet_ntoa一样是返回内部的
+     static 内存.而是重复返回strptr而已(上面的inet_ntoa_r也一样)
+   + inet_ntop还有一个len参数来保证strptr的buffer不溢出.如果len过小的话, errno
+     会被设为ENOSPC
+** sock_ntop and Related Function
+   + inet_ntop的一个缺点是要求传入一个pointer(指向某个binary address), 而且我们
+     要实现知道这个地址的类型, 为了适应ipv4和ipv6的两种情况,我们设计了下面这个函数
+     sock_ntop,他会探测好pointer指向的地址类型,然后调用对应的inet_ntop, 下面只
+     列举了AF_INET的情况
+     #+begin_src c
+       char * sock_ntop(const struct sockaddr* sa, socklen_t salen) {
+           char          portstr[8];
+           static char   str[128];   /* unix domain is largest */
+
+           switch (sa->sa_family) {
+           case AF_INET: {
+               struct sockaddr_in *sin = (struct sockaddr_in *)sa;
+
+               if (inet_ntop(AF_INET, &sin->sin_addr, str, sizeof(str)) == NULL) {
+                   return (NULL);
+               }
+               if (ntohs(sin->sin_port) != 0) {
+                   snprintf(portstr, sizeof(portstr) ":%d",
+                            ntohs(sin->sin_port));
+                   strcat(str, portstr);
+               }
+               return (str);
+           }
+               //.....
+           }
+       }
+     #+end_src
+   + 我们还写了以下一系列的函数来一次性处理ipv4和ipv6
+     #+begin_src c
+       int sock_bin_wild(int sockfd, int family);
+
+       int sock_cmp_addr(const struct sockaddr *sockaddr1,
+                         const struct sockaddr *sockaddr2,
+                         socklen_t addrlen);
+       int sock_cmp_port(const struct sockaddr *sockaddr1,
+                         const struct sockaddr *sockaddr2,
+                         socklen_t addrlen);
+       int sock_get_port(const struct sockaddr* sockaddr, socklen_t addrlen);
+       char *sock_ntop_host(const struct sockaddr* sockaddr, socklen_t addrlen);
+       void sock_set_addr(const struct sockaddr *sockaddr, socklen_t addrlen, void *ptr);
+       void sock_set_port(const struct sockaddr *sockaddr, socklen_t addrlen, int port);
+       void sock_set_wild(struct sockaddr *sockaddr, socklen_t addrlen);
+     #+end_src
+** readn, writen, and readline Functions
+   + 通常情况下在socket编程中read和write的结果通常比我们要求的要少, 这是因为读取
+     写入已经超过了buffer limit,需要再次读取或写入(特殊情况下read可以超过这个limit,
+     但是write只有在nonblocking的情况下才能超过这个lilmit)
+   + 我们自己设计了一系列函数,在一次不成功读取写入要求的byte的情况下,多次去读取和写入
+     - readn: Read "b" bytes from a descriptor
+       #+begin_src c
+         ssize_t
+         readn(int fd, void *vptr, size_t n) {
+             size_t  nleft;
+             ssize_t nread;
+             char    *ptr;
+
+             ptr = vptr;
+             nleft = n;
+             while (nleft > 0) {
+                 if( (nread = read(fd, ptr, nleft)) < 0) {
+                     if (errno == EINTR) {
+                         nread = 0;            /* and call read() again */
+                     } else {
+                         return (-1);
+                     } else if (nread == 0) {
+                         break;                /* EOF */
+                     }
+                 }
+
+                 nleft -= nread;
+                 ptr += nread;
+             }
+             return (n - nleft);       /* return >= 0*/
+         }
+       #+end_src
+     - writen: Wirte n bytes to a descriptor
+       #+begin_src c
+         ssize_t
+         writen(int fd, const void *vptr, size_t n) {
+             size_t   nleft;
+             ssize_t  nwritten;
+             const char *ptr;
+
+             ptr = vptr;
+             nleft = n;
+             while(nleft > 0) {
+                 if ((nwritten = write(fd, ptr, nleft) <= 0)) {
+
+                     if (nwritten < 0 && errno == EINTR) {
+                         nwritten = 0;
+                     } else {
+                         return (-1);
+                     }
+                 }
+                 nleft == nwritten;
+                 ptr += nwritten;
+             }
+             return (n);
+         }
+
+
+
+       #+end_src
+     - readline : PAINFULLY SLOW VERSION
+       #+begin_src c
+         ssize_t
+         readline(int fd, void *vptr, size_t maxlen) {
+             ssize_t n, rc;
+             char    c, *ptr;
+
+             ptr = vptr;
+             for (n = 1; n < maxlen; n++) {
+             again:
+                 if ((rc == read(fd, &c, 1)) == 1) {
+                     ,*ptr++ = c;
+                     if (c == '\n') {
+                         break;
+                     }
+                 } else if (rc == 0) {
+                     ,*ptr = 0;
+                     return (n-1);
+                 } else {
+                     if (errno == EINTR) {
+                         goto again;
+                     }
+                     return (-1);
+                 }
+             }
+             ,*ptr = 0;
+             return (n);
+         }
+       #+end_src
+   + 上面的readline在每个byte上面调用read,非常的没有效率,下面是我们实现的一个较
+     为高效的readline版本
+     #+begin_src c
+       static int read_cnt;
+       static char *read_ptr;
+       static char read_buf[MAXLINE];
+
+       static ssize_t
+       my_read(int fd, char *ptr) {
+           if (read_cnt <= 0) {
+           again:
+               if ((read_cnt == read(fd, read_buf, sizeof(read_buf))) < 0) {
+                   if (errno == EINTR) {
+                       goto again;
+                   }
+                   return (-1);
+               } else if (read_cnt == 0) {
+                   return (0);
+               }
+               read_ptr = read_buf;
+           }
+
+           read_cnt--;
+           ,*ptr = *read_ptr++;
+           return (1);
+       }
+
+       ssize_t
+       readline(int fd, void *vptr, size_t maxlen) {
+           ssize_t n, rc;
+           char    c, *ptr;
+
+           ptr = vptr;
+           for (n = 1; n < maxlen; n++) {
+               if ((rc = my_read(fd, &c)) == 1) {
+                   ,*ptr++ = c;
+                   if (c == '\n') {
+                       break;
+                   }
+               } else if (rc == 0) {
+                   ,*ptr = 0;
+                   return (n-1);
+               } else {
+                   return (-1);
+               }
+           }
+
+           ,*ptr = 0;
+           return (n);
+       }
+
+
+       ssize_t
+       readlinebuf(void **vptrptr) {
+           if (read_cn) {
+               ,*vptrptr = read_ptr;
+           }
+           return (read_cn);
+       }
+     #+end_src
+   + my_read是读取MAXLINE的char才退出
+   + readline函数这次没有调用read,而调用了my_read,就搞笑了很多
+   + 一个新的函数redlinebuf暴露了内部buffer的state,所以调用者可以check这个state,
+     然后确定是否有新数据.
+   + 鉴于使用了static变量,所以reentrant是做不到了,threadsafe更不可能.
