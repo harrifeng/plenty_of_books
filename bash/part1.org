@@ -291,3 +291,161 @@
 
      
 
+* Manipulating Files And Directories
+** Wildcards
+   + 因为shell经常使用文件名, 通配符为shell提供了一种快速定位"一组"文件的方法.下
+     面是主要通配符
+     | Wildcard      | Matches                                                  |
+     |---------------+----------------------------------------------------------|
+     | *             | Any characters                                           |
+     | ?             | Any single character                                     |
+     | [characters]  | Any character that is a member of the set characters     |
+     | [!characters] | Any character that is not a member of the set characters |
+     | [\[:class:]\] | Any character that is a member of the specified class    |
+     | [:alnum:]     | Any alphanumeric character                               |
+     | [:alpha:]     | Any alphabetic character                                 |
+     | [:digit:]     | Any numeral                                              |
+     | [:lower:]     | Any lowercase letter                                     |
+     | [:upper:]     | Any uppercase letter                                     |
+   + 下面是通配符例子
+     | Pattern                | Matches                                                      |
+     |------------------------+--------------------------------------------------------------|
+     | *                      | All files                                                    |
+     | g*                     | Any file beginning with g                                    |
+     | b*.txt                 | Any file beginning weith b followed by any characters and    |
+     |                        | characters and ending with .txt                              |
+     | Data??                 | Any file beginning with Data followed by exactly three chars |
+     | [abc]*                 | Any file beginning with either a, b, or c                    |
+     | BACKUP.[0-9][0-9][0-9] | Any file beginning weith BACKUP. followed by exactly 2 nums  |
+     | [\[:upper:\]]*         | Any file beginning with an uppercase letter                  |
+     | [![:digit:]]*          | Any file not beginning with a number                         |
+     | *[[:lower:]123]        | Any file ending with a lowercase letter or num 1, 2, 3       | 
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls *
+       12.txt  23.txt  ABC.txt  BACKUP.123  Datafhr  abc.txt  bca.txt  g1.txt  g2.txt
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls g*
+       g1.txt  g2.txt
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls b*.txt
+       bca.txt
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls Data???
+       Datafhr
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls [abc]*
+       abc.txt  bca.txt
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls BACKUP.[0-9][0-9][0-9]
+       BACKUP.123
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls [[:upper:]]*
+       ABC.txt  BACKUP.123  Datafhr
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls [![:digit:]]*
+       ABC.txt  BACKUP.123  Datafhr  abc.txt  bca.txt  g1.txt  g2.txt
+       lvtest@auto-inst:~/tmp/ttt/wc$ ls *[[:lower:]123]
+       12.txt  23.txt  ABC.txt  BACKUP.123  Datafhr  abc.txt  bca.txt  g1.txt  g2.txt
+     #+end_src
+** mkdir-Create Directories
+   + mkdir是建立文件夹的命令
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp/ttt/mk$ ls
+       lvtest@auto-inst:~/tmp/ttt/mk$ mkdir dir1 dir2 dir3
+       lvtest@auto-inst:~/tmp/ttt/mk$ ls
+       dir1  dir2  dir3
+     #+end_src
+** cp-Copy Files and Directories
+   + cp的用法主要就是下面三种
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp/ttt/mk$ ls
+       dir1  dir2  dir3  f1  f2  f3  f4
+       lvtest@auto-inst:~/tmp/ttt/mk$ cp f1 f5
+       lvtest@auto-inst:~/tmp/ttt/mk$ ls
+       dir1  dir2  dir3  f1  f2  f3  f4  f5
+       lvtest@auto-inst:~/tmp/ttt/mk$ cp f1 dir1
+       lvtest@auto-inst:~/tmp/ttt/mk$ find .
+       .
+       ./f5
+       ./dir3
+       ./dir2
+       ./f3
+       ./f2
+       ./f4
+       ./f1
+       ./dir1
+       ./dir1/f1
+       lvtest@auto-inst:~/tmp/ttt/mk$ cp f2 f3 f4 f5 dir2
+       lvtest@auto-inst:~/tmp/ttt/mk$ find .
+       .
+       ./f5
+       ./dir3
+       ./dir2
+       ./dir2/f5
+       ./dir2/f3
+       ./dir2/f2
+       ./dir2/f4
+       ./f3
+       ./f2
+       ./f4
+       ./f1
+       ./dir1
+       ./dir1/f1
+     #+end_src
+   + cp的参数主要有
+     | Option            | Meaning                                                   |
+     |-------------------+-----------------------------------------------------------|
+     | -a, --archive     | Copy the files and directories with all their attributes  |
+     |                   | It is default attributes for the user performing the copy |
+     | -i, --interactive | If this option is not specified, cp will silently         |
+     |                   | overwrite files                                           |
+     | -r, --recursive   | Recursively copy directories and their contesnts          |
+     | -u, --update      | copy only files that either don't exist or are newer      |
+     |                   | than the existing corresponding files in the destination  |
+     |                   | directory                                                 |
+     | -v, --verbose     | Display informative messages                              |
+** mv-Move and Rename Files
+   + mv 和copy从参数和使用方面都是一样的.要注意的是,比如, mv a b, 如果a,b在一个
+     文件夹下,那么mv就等同于rename了
+** rm-Remove Files and Directories
+   + rm就是删除某个item.和前面的mv,copy使用方法一样,多了一个"-f, --force"参数,忽
+     略文件不存在的提示.
+** ln-Create Links
+*** Hard links
+    + 创建hard link的方法为 ln file link, 注意先写file再写link, hard link只能link
+      普通文件,不能link其他, hard link有如下缺点:
+      - 不能link其他partition的文件
+      - 不能link文件夹
+      #+begin_src sh
+        lvtest@auto-inst:~/tmp/ttt/hs$ ls
+        f1
+        lvtest@auto-inst:~/tmp/ttt/hs$ ln f1 hard-link
+        lvtest@auto-inst:~/tmp/ttt/hs$ ls
+        f1  hard-link
+        lvtest@auto-inst:~/tmp/ttt/hs$ ls -al
+        total 8
+        drwxrwxr-x 2 lvtest lvtest 4096 Feb 27 18:58 .
+        drwxrwxr-x 6 lvtest lvtest 4096 Feb 27 18:58 ..
+        -rw-rw-r-- 2 lvtest lvtest    0 Feb 27 18:58 f1
+        -rw-rw-r-- 2 lvtest lvtest    0 Feb 27 18:58 hard-link
+      #+end_src
+    + 创建Symbolic Link的方法是ln -s item link, symbolic link不仅仅能link普通文
+      件, 也可以link文件夹等.
+      #+begin_src sh
+        lvtest@auto-inst:~/tmp/ttt/hs$ ls
+        f1  hard-link
+        lvtest@auto-inst:~/tmp/ttt/hs$ ln -s f1 soft-link
+        lvtest@auto-inst:~/tmp/ttt/hs$ ls -al
+        total 8
+        drwxrwxr-x 2 lvtest lvtest 4096 Feb 27 19:03 .
+        drwxrwxr-x 6 lvtest lvtest 4096 Feb 27 18:58 ..
+        -rw-rw-r-- 2 lvtest lvtest    0 Feb 27 18:58 f1
+        -rw-rw-r-- 2 lvtest lvtest    0 Feb 27 18:58 hard-link
+        lrwxrwxrwx 1 lvtest lvtest    2 Feb 27 19:03 soft-link -> f1
+      #+end_src
+** Let's Build a Playground
+   + hard link和symbolic link的区别在于hard link不会创建一个新的inode,而是两个文
+     件使用一个inode,使用ls -i可以创建这个inode
+     #+begin_src sh
+       lvtest@auto-inst:~/tmp/ttt/hs$ ls -li
+       total 0
+       134897 -rw-rw-r-- 2 lvtest lvtest 0 Feb 27 18:58 f1
+       134897 -rw-rw-r-- 2 lvtest lvtest 0 Feb 27 18:58 hard-link
+       134898 lrwxrwxrwx 1 lvtest lvtest 2 Feb 27 19:03 soft-link -> f1
+     #+end_src
+
+
+  
