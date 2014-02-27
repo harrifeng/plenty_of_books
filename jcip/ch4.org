@@ -1,4 +1,5 @@
-* chapter 4: Composing Objects
+#+TITLE: Chapter 4
+* Composing Objects
   + 前面我们学到了如何在底层处理"线程安全"和"同步", 但是我们不希望分析每次内存访
     问,分析, 然后来保证线程安全, 这一章就来分析如何使用线程安全的component来更加
     容易的达到整体的线程安全
@@ -12,7 +13,7 @@
        @ThreadSafe
        public final class Counter {
            @GuardedBy("this") private long value = 0;
-       
+
            public synchronized long getValue() {
                return value;
            }
@@ -78,7 +79,7 @@
       - 要么object本身就是thread-safe
       - 要么object是immutable
       - 要么object被锁保护.
-      
+
 ** Instance Confinement
    + 即便一个对象不是线程安全的,你也可以通过加一层外衣的方式,让它在多线程的环境
      中安全的运行:
@@ -97,7 +98,7 @@
         public class PrivateLock {
             private final object myLock = new Object();
             @GuardedBy("myLock") Widget widget;
-        
+
             void someMethod() {
                 synchronized(myLock) {
                     // Access or modify the state of widget
@@ -119,30 +120,30 @@
         public class MonitorVehicleTracker {
             @GuardedBy("this")
             private final Map<String, MutablePoint> locations;
-          
+
             public MonitorVehicleTracker(Map<String, MutablePoint> locations) {
                 this.locations = deepCopy(locations);
             }
-          
+
             public synchronized Map<String, MutablePoint> getLocations() {
                 return deepCopy(locations);
             }
-          
+
             public synchronized MutablePoint getLocations(String id) {
                 MutablePoint loc = locations.get(id);
                 return loc == null ? null : new MutablePoint(loc);
             }
-          
+
             public synchronized void setLocation(String id, int x, int y) {
                 MutablePoint loc = locations.get(id);
-          
+
                 if (loc == null) {
                     throw new IllegalArgumentException("No such ID: " + id);
                     loc.x = x;
                     loc.y = y;
                 }
             }
-          
+
             private static Map<String, MutablePoint> deepCopy(Map<String,
                                                               MutablePoint> m) {
                 Map<String, MutablePoint> result = new HashMap<String, MutablePoint>();
@@ -155,7 +156,7 @@
       #+end_src
     + 这个MonitorVehicleTracker的类有一个Map成员变量locations, 其中包括所有汽车的
       <名称,位置>. MonitorVehicleTracker这个类的设计就是为了封装locations
-    + 使用MonitorVehicleTracker对象的有两个thread. 它们会同时访问MonitorVehicleTracker, 
+    + 使用MonitorVehicleTracker对象的有两个thread. 它们会同时访问MonitorVehicleTracker,
       所以,要求MonitorVehicleTracker是threadsafe的
       - View thread负责把数据显示出来
       - Updater thread复杂更新数据
@@ -166,8 +167,185 @@
       为一个性能瓶颈. 除了可能的性能瓶颈外,因为返回的是一个深拷贝的数据,那么也就
       意味着这些数据不会自动更新(返回浅拷贝的话,因为内容都是reference,肯定可以更新)
 ** Delegating Thread Safety
-        
+   + 当我们从一无所有来开始创建class的时候,Java monitor pattern是非常有用的,但是
+     如果我们class的component已经thread-safe了呢?那情况就不好说了,即便是成员都
+     thread-safe,组合起来也有可能不thread-safe
+   + 前面的CountingFactorizer的例子,我们给某个对象的成员类型设置为AtomicLong,整个
+     对象就变成了thread-safe了,所以说我们把CountingFactorize的thread-safe代理给
+     了AtomicLong来实现
+*** Vehicle Tracker Using Delegation
+    + 下面我们来实现一个thread-safe的Map:ConcurrentHashMap,并且使用immutable Point
+      来替代MutablePoint
+      #+begin_src java
+        @Immutable
+        public class Point {
+            public final int x, y;
 
+            public Point(int x, int y) {
+                this.x = x;
+                this.y = y;
+            }
+        }
+      #+end_src
+    + Point是immutable的,所以是thread-safe的, immutable数值可以随意共享,分发.所以我们
+      也不需要把location数据拷贝一份返回了
+    + 下面的DelegatingVehicleTracker没有用什么特殊的同步方法,但是他使用了我们的thread-safe
+      的ConcurrentHashMap,并且所有的point都是immutable的. immutable的变量虽然不可以改变,
+      但是却可以替换:用了replace函数之后,原来的point可以被new Point(x,y)替换掉,这样一来,我们
+      的返回值还能动态的改变:比如,线程A通过getLocations获取了某个地址, 线程B随后改变了这个地址,
+      那么这些改变还是会反映给线程A(因为hash表的id没有变).
+      #+begin_src java
+        @ThreadSafe
+        public class DelegatingVehicleTracker {
+            private final ConcurrentMap<String, Point> locations;
+            private final Map<String, Point> unmodifiableMap;
 
-        
-      
+            public DelegatingVehicleTracker(Map<String, Point>  pints) {
+                locations = new ConcurrentHashMap<String, Point>(points);
+                unmodifiableMap = Collections.unmodifiableMap(locations);
+            }
+
+            public Map<String, Point> getLocations() {
+                return unmodifiableMap;
+            }
+
+            public Point getLocation(String id) {
+                return locations.get(id);
+            }
+
+            public void setLocation(String id, int x, int y) {
+                if (locations.replace(id, new Point(x,)) == null) {
+                    throw new IllegalArgumentException("invalid vehicle name:"
+                                                       + id);
+                }
+            }
+        }
+      #+end_src
+    + 如果我们不想这个动态的改变依然通知给其他线程,那么我们可以返回一个copy(返回的可以是常规Map,
+      因为我们并不要求返回值是thread-safe的)
+      #+begin_src java
+        public Map<String, Point> getLocations() {
+            return Collections.unmodifiableMap( new HashMap<String, Point>
+                                                (locations));
+        }
+      #+end_src
+*** Independent State Variables
+    + 到现在为止,代理的例子都是只有一个thread-safe的state variable.其实在有多个state variable的
+      情况下,也是可以是使用代理的.只要这些variable是相互independent的
+    + 下面的例子把thread-safe代理给了CopyOnWriteArrayList,这是一个thread-safe的List实现. 因为鼠
+      标事件和键盘事件相互直接没有影响,所以可以这么写.
+      #+begin_src java
+        public class VisualComponent {
+            private final List<KeyListener> keyListeners
+                = new CopyOnWriteArrayList<KeyListener>();
+            private final list<MouseListener> mouseListener
+                = new CopyOnWriteArrayList<MouseListener>();
+
+            public void addKeyListener(KeyListener listener) {
+                KeyListeners.add(listener);
+            }
+
+            public void addMouseListener(MouseListener listener) {
+                mouseListener.add(listener);
+            }
+
+            public void removeKeyListener(KeyListener listener) {
+                KeyListeners.remove(listener);
+            }
+
+            public void removeMouseListener(MouseListener listener) {
+                mouseListeners.remove(listener);
+            }
+        }
+      #+end_src
+*** When Delegation Fails
+    + 代理多个state variable的要求是这些state variable必须都是independent的,如果不independent的,
+      比如下面的例子中,range的upper一定要大于lower(两个值不独立),那么不加锁的情况直接把变量代理给
+      其他thread-safe的数据结构是不行的
+      #+begin_src java
+        public class NumberRange {
+            // INVARIANT: lower <= upper
+            private final AtomicInteger lower = new AtomicInteger(0);
+            private final AtomicInteger upper = new AtomicInteger(0);
+
+            public void setLower(int i) {
+                // warning -- unsafe check-then-act
+                if (i > upper.get()) {
+                    throw new IllegalArgumentException("can't set lower to "
+                                                       + i + " > upper");
+                }
+                lower.set(i);
+            }
+
+            public void seetUpper(int i) {
+                // warning -- unsafe check-then-act
+                if (i < lower.get()) {
+                    throw new IllegalArgumentException("can't set upper to "
+                                                       + i + " < lower");
+                }
+                upper.set(i);
+            }
+
+            public boolean isInRange(int i) {
+                return (i >= lower.get() && i <= upper.get());
+            }
+        }
+      #+end_src
+*** Publishing Underlying State Variables
+    + 我们还是尽量不要publish 内部的state出去
+    + 在某些情况下,还是可以安全的publish内部的state,如下面的情况.
+*** Example: Vehicle Tracker that Publish Its State
+    + 下面的例子首先创建了一个安全的Point
+      #+begin_src java
+        @ThreadSafe
+        public class SafePoint {
+            @GuardeBy("this") private int x, int y;
+
+            private SaftePoint(int[] a) {
+                this(a[0], a[1]);
+            }
+
+            public SafePoint(SafePoint p) {
+                this(p.get());
+            }
+
+            public SafePoint(int x, int y) {
+                return new int[] {x, y};
+            }
+
+            public synchronized void set(int x, int y) {
+                this.x = x;
+                this.y = y;
+            }
+        }
+      #+end_src
+    + 下面是安全publish state的代码
+      #+begin_src java
+        @ThreadSafe
+        public class PublishingVehicleTracker {
+            private final Map<String, SafePoint> locations;
+            private final Map<String, SafePoint> unmodifiableMap;
+
+            public PublishingVehicleTracker(Map<String, SafePoint> locations) {
+                this.locations
+                    = new ConcurrentHashMap<String, SafePoint>(locations);
+                this.unmodifiableMap
+                    = Collections.unmodifiableMap(this.locations);
+            }
+
+            public Map<String, SafePoint> getLocations() {
+                return unmodifiableMap;
+            }
+
+            public SafePoint getLocations(String id) {
+                return locations.get(id);
+            }
+
+            public void setLocation(String id, int x, int y) {
+                if (!locations.containsKey(id))
+                    throw new IllegalArgumentException("invalid vehicle name:"
+                                                       + id);
+            }
+        }
+      #+end_src
+A
