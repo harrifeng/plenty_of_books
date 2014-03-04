@@ -8,7 +8,7 @@
 ** Your First keystrokes
    + 打开terminal emulator,应该是如下这个样子的
      #+begin_src sh
-       lvtest@auto-inst:~$ 
+       lvtest@auto-inst:~$
      #+end_src
    + $(dollar sign)代表一般用户, #(hash mark)代表超级用户.
 *** Command History
@@ -24,13 +24,13 @@
    + cal是日历命令
      #+begin_src sh
        lvtest@auto-inst:~$ cal
-          February 2014      
-       Su Mo Tu We Th Fr Sa  
-                          1  
-        2  3  4  5  6  7  8  
-        9 10 11 12 13 14 15  
-       16 17 18 19 20 21 22  
-       23 24 25 26 27 28     
+          February 2014
+       Su Mo Tu We Th Fr Sa
+                          1
+        2  3  4  5  6  7  8
+        9 10 11 12 13 14 15
+       16 17 18 19 20 21 22
+       23 24 25 26 27 28
      #+end_src
    + df可以查看当前驱动器下面的剩余空间
      #+begin_src sh
@@ -54,7 +54,7 @@
      #+end_src
 ** Ending a Terminal Session
    + 我们使用exit来结束一个terminal session
-   + 除了我们上面说的terminal emulator, Linux还会在GUI的背后运行一些terminal 
+   + 除了我们上面说的terminal emulator, Linux还会在GUI的背后运行一些terminal
      session.叫做virtual terminal,我们可以通过CTRL+ALT+F1~F6来调用,返回GUI
      桌面使用ALT-F7
 * Navigation
@@ -63,7 +63,7 @@
    + 和windows不一样的是:windows为每一个分区准备了一个单独的"文件系统树", 对于Linux
      来说,无论有多少设备,都只有一套"文件系统树", 额外的设备是通过"mount"的形式来放在
      某个文件夹下面的
-** The Current Working Directory     
+** The Current Working Directory
    + 我们的shell当前无论如何都会在某个文件夹下,使用pwd来表示
      #+begin_src sh
        lvtest@auto-inst:~/tmp$ pwd
@@ -83,7 +83,7 @@
         lvtest@auto-inst:/usr/bin$ pwd
         /usr/bin
       #+end_src
-*** Relative Pathnames      
+*** Relative Pathnames
     + 相对路径就是从pwd开始如何找到下一级,其中"."是当前文件夹".."是上层文件夹
       #+begin_src sh
         lvtest@auto-inst:/usr$ pwd
@@ -104,7 +104,7 @@
       #+begin_src sh
         lvtest@auto-inst:/usr/bin$ pwd
         /usr/bin
-        lvtest@auto-inst:/usr/bin$ cd 
+        lvtest@auto-inst:/usr/bin$ cd
         lvtest@auto-inst:~$ pwd
         /home/lvtest
         lvtest@auto-inst:~$ cd -
@@ -124,14 +124,14 @@
        lvtest@auto-inst:~$ ls ~ /usr
        /home/lvtest:
        authorized_keys  backupssh  test  tmp
-       
+
        /usr:
        bin  games  include  lib  local  sbin  share  src
      #+end_src
 *** Options and Arguments
     + 我们的命令都是由如下三部分组成的
       #+begin_example
-        command -options arguments      
+        command -options arguments
       #+end_example
     + ls就支持-l这种"单字母"参数,而且单字母参数可以写在一块,效果叠加,还支持通过
       "--"来增加long options
@@ -193,7 +193,7 @@
       | lvtest       | The name of the group that owns the file                       |
       | 4096         | Size of the file in bytes                                      |
       | Feb 20 16:48 | Date and time of the file's last modification                  |
-      | unpbook      | Name of the file                                               | 
+      | unpbook      | Name of the file                                               |
 ** Determining a File's Type with file
    + 我们可以用file命令来判断文件类型
      #+begin_src sh
@@ -204,11 +204,11 @@
    + 我们可以使用less来查看text类型的文件, 期间所有的操作和VI一样!, 可以按h来查
      看帮助
      #+begin_src sh
-       lvtest@auto-inst:~/tmp$ less printf.c 
+       lvtest@auto-inst:~/tmp$ less printf.c
        WARNING: terminal is not fully functional
        printf.c  (press RETURN)
        #include <stdio.h>
-       
+
        int main(int argc, char *argv[])
        {
            int ii = 0x01020304;
@@ -218,7 +218,7 @@
                printf("%x\n", *ptr);
                ptr++;
            }
-               
+
            return 0;
        }
        printf.c (END)
@@ -280,7 +280,7 @@
      |               | mail, for example                                                |
      | /val/log      | /var/log contains log files, records of various sytem activity.  |
      |               | The most useful one is /var/log/messages, in some system, only   |
-     |               | superuser can view log file                                      | 
+     |               | superuser can view log file                                      |
 *** Symbolic Links
     + 在ls 的long format里面,如果第一个不是"-"或者"d", 而是"l"的话,就是symbolic links
       #+begin_src sh
@@ -289,7 +289,6 @@
 
 
 
-     
 
 * Manipulating Files And Directories
 ** Wildcards
@@ -319,7 +318,7 @@
      | BACKUP.[0-9][0-9][0-9] | Any file beginning weith BACKUP. followed by exactly 2 nums  |
      | [\[:upper:\]]*         | Any file beginning with an uppercase letter                  |
      | [![:digit:]]*          | Any file not beginning with a number                         |
-     | *[[:lower:]123]        | Any file ending with a lowercase letter or num 1, 2, 3       | 
+     | *[[:lower:]123]        | Any file ending with a lowercase letter or num 1, 2, 3       |
      #+begin_src sh
        lvtest@auto-inst:~/tmp/ttt/wc$ ls *
        12.txt  23.txt  ABC.txt  BACKUP.123  Datafhr  abc.txt  bca.txt  g1.txt  g2.txt
@@ -448,4 +447,159 @@
      #+end_src
 
 
-  
+
+* Working With Commands
+** What Exactly Are Commands?
+   + 一个命令其实质上可能会是下面四种中的一种:
+     - An executable program: 所有的在/usr/bin下面的可执行程序都是这种, which的
+       结果就是/usr/bin
+     - A command build into the shell itself:是shell自带的. which的结果是空,
+       比如cd
+     - A shell function
+     - An alias: 在其他命令的基础上自己简单改变的命令,比如ll, which ll也是空的
+
+** Identifying Commans
+*** type-Display a Command's Type
+    + 我们可以用type命令来判断命令的类型:
+      #+begin_src sh
+        lvtest@auto-inst:~$ type type
+        type is a shell builtin
+        lvtest@auto-inst:~$ type ls
+        ls is aliased to `ls --color=auto'
+        lvtest@auto-inst:~$ type cp
+        cp is /bin/cp
+      #+end_src
+*** which-Display an Executable's Location
+    + 有时候我们一个可执行程序会有多个版本,which可以判断系统默认的使用哪个, which
+      还只能作用在executable程序,对于builtin的程序不管用
+      #+begin_src sh
+        lvtest@auto-inst:~$ which ls
+        /bin/ls
+        lvtest@auto-inst:~$ which cd
+      #+end_src
+** Getting a Command's Documentation
+*** help-Get Help for Shell Builtins
+    + help + buildin command的话可以查看其文档
+      #+begin_src sh
+        lvtest@auto-inst:~$ help cd
+        cd: cd [-L|[-P [-e]]] [dir]
+            Change the shell working directory.
+
+            Change the current directory to DIR.  The default DIR is the value of the
+            HOME shell variable.
+
+            The variable CDPATH defines the search path for the directory containing
+            DIR.  Alternative directory names in CDPATH are separated by a colon (:).
+            A null directory name is the same as the current directory.  If DIR begins
+            with a slash (/), then CDPATH is not used.
+
+            If the directory is not found, and the shell option `cdable_vars' is set,
+            the word is assumed to be  a variable name.  If that variable has a value,
+            its value is used for DIR.
+
+            Options:
+                -L  force symbolic links to be followed
+                -P  use the physical directory structure without following symbolic
+                links
+                -e  if the -P option is supplied, and the current working directory
+                cannot be determined successfully, exit with a non-zero status
+
+            The default is to follow symbolic links, as if `-L' were specified.
+
+            Exit Status:
+            Returns 0 if the directory is changed, and if $PWD is set successfully when
+            -P is used; non-zero otherwise.
+      #+end_src
+*** --help-Display Usage Information
+    + buildin的可以使用help,那么如果是executable的话,help就不管用了,但是默认这种
+      命令会加一个--help参数(executable最开始都是c语言写的,c语言自然对于位于自己exe
+      后面的参数,当然好分析了)
+      #+begin_src sh
+        lvtest@auto-inst:~$ type mkdir
+        mkdir is /bin/mkdir
+        lvtest@auto-inst:~$ help mkdir
+        bash: help: no help topics match `mkdir'.  Try `help help' or `man -k mkdir' or `info mkdir'.
+        lvtest@auto-inst:~$ mkdir --help
+        Usage: mkdir [OPTION]... DIRECTORY...
+        Create the DIRECTORY(ies), if they do not already exist.
+
+        Mandatory arguments to long options are mandatory for short options too.
+          -m, --mode=MODE   set file mode (as in chmod), not a=rwx - umask
+          -p, --parents     no error if existing, make parent directories as needed
+          -v, --verbose     print a message for each created directory
+          -Z, --context=CTX  set the SELinux security context of each created
+                              directory to CTX
+              --help     display this help and exit
+              --version  output version information and exit
+
+        Report mkdir bugs to bug-coreutils@gnu.org
+        GNU coreutils home page: <http://www.gnu.org/software/coreutils/>
+        General help using GNU software: <http://www.gnu.org/gethelp/>
+        Report mkdir translation bugs to <http://translationproject.org/team/>
+        For complete documentation, run: info coreutils 'mkdir invocation'
+      #+end_src
+*** man-Display a Program's Manual Page
+    + 对于buildin的命令,前置的查看方法是help cmd,对于executable(开始都是c语言写
+      的)来说,前置的查看方法是man ls
+    + 由于一个executable通常都是c语言写的,而这些命令都有c语言的相应函数(甚至是system
+      call),所以我们有如下的常用默认显示类别
+      | Section | Contents                                       |
+      |---------+------------------------------------------------|
+      |       1 | User commands                                  |
+      |       2 | Programming interfaces for kernel system calls |
+      |       3 | Programming interfaces to the C library        |
+      |       4 | Special files such as device nodes and drivers |
+      |       5 | File formats                                   |
+      |       6 | Games and amusements such as screensavers      |
+      |       7 | Miscellaneous                                  |
+      |       8 | System administration commands                 |
+    + 类别的使用方法是把类别序号放在man和cmd之间
+      #+begin_src sh
+        lvtest@auto-inst:~$ man 5 passwd
+        PASSWD(5)                File Formats and Conversions                PASSWD(5)
+      #+end_src
+*** apropos-Display Appropriate Commands
+    + 可以看成是bash的google
+      #+begin_src sh
+        lvtest@auto-inst:~$ apropos mkdir
+        mkdir (1)            - make directories
+        mkdir (2)            - create a directory
+        mkdirat (2)          - create a directory relative to a directory file descri...
+      #+end_src
+*** whatis-Display a Very Brief Description of a Command
+    + whatis 就是bash的百度百科
+      #+begin_src sh
+        lvtest@auto-inst:~$ whatis ls
+        ls (1)               - list directory contents
+      #+end_src
+** Creating Your Own Commands with alias
+   + 我们可以使用alias来重新组合一个命令
+     #+begin_src sh
+       lvtest@auto-inst:~$ alias foo='cd /usr; ls; cd -'
+       lvtest@auto-inst:~$ which foo
+       lvtest@auto-inst:~$ type foo
+       foo is aliased to `cd /usr; ls; cd -'
+       lvtest@auto-inst:~$ foo
+       bin  games  include  lib  local  sbin  share  src
+       /home/lvtest
+     #+end_src
+   + 使用unalias来去掉这个命令的alias
+     #+begin_src sh
+       lvtest@auto-inst:~$ unalias foo
+       lvtest@auto-inst:~$ type foo
+       bash: type: foo: not found
+     #+end_src
+   + 使用alias不加参数的话,会列举系统上面所有的alias
+     #+begin_src sh
+       lvtest@auto-inst:~$ alias
+       alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
+       alias egrep='egrep --color=auto'
+       alias fgrep='fgrep --color=auto'
+       alias grep='grep --color=auto'
+       alias l='ls -CF'
+       alias la='ls -A'
+       alias ll='ls -alF'
+       alias ls='ls --color=auto'
+     #+end_src
+   + alias命令只有在当前shell的生命期内有用,一旦关掉当前的terminal,这次alias的就
+     消失了.
