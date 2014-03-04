@@ -289,7 +289,6 @@
 
 
 
-
 * Manipulating Files And Directories
 ** Wildcards
    + 因为shell经常使用文件名, 通配符为shell提供了一种快速定位"一组"文件的方法.下
@@ -447,7 +446,6 @@
      #+end_src
 
 
-
 * Working With Commands
 ** What Exactly Are Commands?
    + 一个命令其实质上可能会是下面四种中的一种:
@@ -603,3 +601,199 @@
      #+end_src
    + alias命令只有在当前shell的生命期内有用,一旦关掉当前的terminal,这次alias的就
      消失了.
+* Redirection
+** Standard Input, Output, and Error
+   + bash程序都会和standard input,output,error相关联的,比如ls就是把结构发送到
+     standard output和standard error的.
+*** Redirecting Standard Output
+    + 我们是通过>将standard output转移到>指向的"文件"(从头开始,会覆盖以前的内容)
+      #+begin_src sh
+        bash-3.2$ ls /usr/bin/ > ls-output.txt
+        bash-3.2$ ls -l ls-output.txt
+        -rw-r--r--  1 hfeng  staff  8911 Mar  4 20:43 ls-output.txt
+        bash-3.2$ ls /usr/bin/ > ls-output.txt
+        bash-3.2$ ls -l ls-output.txt
+        -rw-r--r--  1 hfeng  staff  8911 Mar  4 20:43 ls-output.txt
+      #+end_src
+    + 我们是通过>>将standard output叠加转移到>指向的"文件"(从尾开始,会保留以前的内容)
+      #+begin_src sh
+        bash-3.2$ ls /usr/bin/ >> ls-output.txt
+        bash-3.2$ ls /usr/bin/ >> ls-output.txt
+        bash-3.2$ ls /usr/bin/ >> ls-output.txt
+        bash-3.2$ ls -l ls-output.txt
+        -rw-r--r--  1 hfeng  staff  26733 Mar  4 20:44 ls-output.txt
+      #+end_src
+*** Redirecting Standard Error
+    + 如果是redirect standard Error就稍微有点拐弯了,要借助file descriptor的概念,
+      一个程序产生的输出会输出到三个"文件"上面,他们也默认拥有前三个file descriptor:
+      0,1,2分别代表:stin, stdout, sterr,所以把sterr导入到某个文件的方法如下(注意
+      2和>是在一块的):
+      #+begin_src sh
+        bash-3.2$ ls -l /bin/usr 2> ls-error.txt
+        bash-3.2$ cat ls-error.txt
+        ls: /bin/usr: No such file or directory
+      #+end_src
+*** Redirecting Standard Output and Standard Error to One File
+    + 有如下两种方法:
+      - 传统的方法,要转两次,利用了stdout的file descriptor为1
+        #+begin_src sh
+          bash-3.2$ ls -l /bin/usr > ls-output.txt 2>&1
+          bash-3.2$ cat ls-output.txt
+          ls: /bin/usr: No such file or directory
+        #+end_src
+      - 新版本bash支持如下方法(更简介)
+        #+begin_src sh
+          bash-3.2$ ls -l /bin/usr &> ls-output.txt
+          bash-3.2$ cat ls-output.txt
+          ls: /bin/usr: No such file or directory
+        #+end_src
+*** Disposing of Unwanted Output
+    + 如果我们不想要某些输出,我们可以redirect它们到一个特殊的文件
+      #+begin_src sh
+        bash-3.2$ ls -l /bin/usr 2> /dev/null
+      #+end_src
+*** Redirecting Standard Input
+    + 我们用">"把stdout转移到一个文件,其实我们还可以使用"<"把文件内容作为standard
+      input,如下
+      #+begin_src sh
+        bash-3.2$ cat > lazy_dog.txt
+        The quick brown fox jumped over the lazy dog.
+        bash-3.2$ cat lazy_dog.txt
+        The quick brown fox jumped over the lazy dog.
+        bash-3.2$ cat < lazy_dog.txt
+        The quick brown fox jumped over the lazy dog.
+      #+end_src
+    + 我们可以看到这里使用"<"和不使用"<",是没有什么区别的.但是也说明了<的作用.
+** Pipelines
+   + 管道是bash的重要概念,我们可以通过"|"把一个程序的stout redirect到另一个
+     程序的stdin
+     #+begin_src sh
+       bash-3.2$ ls -l /usr/bin | less
+     #+end_src
+*** Filters
+    + 我们还可以在管道中间进行一些filter操作,比如sort一下
+     #+begin_src sh
+       bash-3.2$ ls -l /usr/bin | more | less
+     #+end_src
+*** uniq-Report or Omit Repeated Lines
+    + uniq是和sort配合最多的一个程序,它把重复的行只显示一次, 而加了-d参数以后,就
+      是只显示那些重复的行
+      #+begin_src sh
+        bash-3.2$ cat test.txt
+        a
+        n
+        c
+        n
+        c
+        n
+        1
+        2
+        3
+        4
+        bash-3.2$ cat test.txt | sort | uniq
+        1
+        2
+        3
+        4
+        a
+        c
+        n
+        bash-3.2$ cat test.txt | sort | uniq -d
+        c
+        n
+      #+end_src
+*** wc-Print Line, Word and Byte Counts
+    + wc会显示文件的1行数2word数3byte数
+      #+begin_src sh
+        bash-3.2$ wc test.txt
+              10      10      20 test.txt
+      #+end_src
+    + 我们可以用前面学过的几个参数来统计我们总共有多个个executable程序在/usr和
+      /usr/bin下面
+      #+begin_src sh
+        bash-3.2$ ls /bin /usr/bin | sort | uniq | wc -l
+            1078
+      #+end_src
+*** grep-Print Lines Matching a Pattern
+    + grep是一个强大的命令,其主要就是"KMP"查找字符串,其使用格式是(注意如果没有
+      files的话,那么就是grep stin了)
+      #+begin_example
+        grep pattern [file...]
+      #+end_example
+    + grep的一个简单应用(-i ignore -v反向输出,等复杂的以后再研究)
+      #+begin_src sh
+        bash-3.2$ ls /usr/bin | sort | uniq | grep zip
+        bunzip2
+        bzip2
+        bzip2recover
+        funzip
+        gunzip
+        gzip
+        unzip
+        unzipsfx
+        zip
+        zipcloak
+        zipdetails
+        zipdetails5.16
+        zipgrep
+        zipinfo
+        zipnote
+        zipsplit
+      #+end_src
+*** head/tail-Print First/Last Part of Files
+    + head 可以看文件的前n(n可以指定默认是10)行, tail反之
+      #+begin_src sh
+        bash-3.2$ head -n 5 ls-output.txt
+        2to3
+        2to3-
+        2to3-2.7
+        2to32.6
+        BuildStrings
+        bash-3.2$ tail -n 5 ls-output.txt
+        zipsplit
+        zless
+        zmore
+        znew
+        zprint
+      #+end_src
+    + tail更重要的一个功能是在-f之后看log
+      #+begin_src sh
+        bash-3.2$ tail -f /var/log/appstore.log
+                "os_updates_to_install_on_restart" = "";
+                result = pass;
+                "user_initiated" = no;
+                "will_restart" = no;
+            }
+        Mar  4 20:29:34 hair.lan storeagent[263]: SoftwareMap: Software map rebuild took 0.0856 seconds for 0 records and produced: {
+            }
+        Mar  4 20:29:34 hair.lan storeagent[263]: AutoUpdateOperation: Released BackgroundTask power assertion (returned 0)
+        ......
+      #+end_src
+*** tee-Read from Stdin and Output to Stdout and Files
+    + tee其实是提供了一种"T"型的管道,就是结果不仅仅是传递给tee后面指定的文件,而且
+      同时传递给了stdout(这样可以让管道继续叠加下去)
+      #+begin_src sh
+        bash-3.2$ ls /usr/bin | grep zip | tee out-grep.txt | grep un
+        bunzip2
+        funzip
+        gunzip
+        unzip
+        unzipsfx
+        bash-3.2$ cat out-grep.txt
+        bunzip2
+        bzip2
+        bzip2recover
+        funzip
+        gunzip
+        gzip
+        unzip
+        unzipsfx
+        zip
+        zipcloak
+        zipdetails
+        zipdetails5.16
+        zipgrep
+        zipinfo
+        zipnote
+        zipsplit
+      #+end_src
